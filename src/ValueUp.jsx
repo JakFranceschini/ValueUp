@@ -16,7 +16,6 @@ const SHEET_GIDS = {
 
 const LOCAL_STORAGE_KEY = "valueup_dados_locais";
 
-// Config do projeto Firebase (Firebase Console > Configurações do projeto > Seus apps > SDK)
 const firebaseConfig = {
   apiKey: "AIzaSyA8VHVwap0jVh9zBbBKp27o2U7iQokKroI",
   authDomain: "valueup-d307f.firebaseapp.com",
@@ -117,7 +116,6 @@ function parseUSDInput(formatado) {
   return isNaN(n) ? 0 : n;
 }
 
-// Stocks, Reits e Etfs são cotados em dólar; ações, fiis e bitcoin em real.
 function ehClasseEmDolar(classe) {
   return CLASSES_EM_DOLAR.includes(String(classe ?? "").toLowerCase().trim());
 }
@@ -217,7 +215,6 @@ async function carregarPlanilha() {
 }
 
 function normalizarDadosLocais(salvoBruto) {
-  // Remove campos de lixo deixados pela migração antiga (resposta de erro do Apps Script)
   const salvo = { ...(salvoBruto ?? {}) };
   delete salvo.mensagem;
   delete salvo.sucesso;
@@ -255,9 +252,6 @@ function salvarDadosLocais(dadosLocais) {
   }
 }
 
-// A partir daqui: sincronização na nuvem via Firebase Realtime Database.
-// localStorage continua funcionando como cache instantâneo (abre rápido, funciona offline);
-// o Firebase passa a ser a fonte "oficial" compartilhada entre os dispositivos.
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
 
@@ -268,7 +262,7 @@ async function carregarDadosLocaisNuvem() {
     return (data && typeof data === "object") ? data : {};
   } catch (err) {
     console.error("Erro ao carregar dados da nuvem:", err);
-    return null; // null = falhou (não confundir com {} = nuvem ainda vazia)
+    return null;
   }
 }
 
@@ -280,15 +274,8 @@ async function salvarDadosLocaisNuvem(dadosLocais) {
   }
 }
 
-// Imagens dos ativos ficam em public/img_ativos/{TICKER}.png, adicionadas manualmente
-// na pasta do projeto (sem envio pra nuvem).
-
 const CLASSES_EM_DOLAR = ["stock", "reit", "etf"];
 
-// Bolsa usada para montar o link do Google Finance por classe de ativo.
-// Ações e Fiis são negociados na B3 (BVMF); Stocks/Reits/Etfs usam NASDAQ como
-// padrão (a maioria dos tickers americanos comuns está lá; caso o ativo seja
-// negociado na NYSE, o Google Finance geralmente redireciona automaticamente).
 const BOLSA_POR_CLASSE = {
   acao: "BVMF",
   fii:  "BVMF",
@@ -309,8 +296,6 @@ function linkGoogleFinance(ticker, classe) {
 
 const NOVO_ATIVO_MARCADOR = "__novo_ativo__";
 
-// Cotação do dólar usada para converter os ativos em dólar (stocks, reits, etfs)
-// para reais. Vem da linha "dolar" da planilha (mesma fonte usada em montarAtivos).
 function calcularTaxaDolar(ativosPlanilha) {
   const linhaMoeda = (ativosPlanilha ?? []).find(
     row => String(row.ticker ?? "").trim().toLowerCase() === "dolar"
@@ -318,8 +303,6 @@ function calcularTaxaDolar(ativosPlanilha) {
   return linhaMoeda ? toFloat(linhaMoeda.cotacao) : 1;
 }
 
-// Busca os dados extras de um ativo (dadosLocais.ativos) por ticker, ignorando
-// maiúsculas/minúsculas — compatível com chaves antigas salvas em maiúsculo.
 function buscarExtraAtivo(ativosExtra, ticker) {
   const alvo = String(ticker ?? "").trim();
   if (!alvo) return {};
@@ -341,8 +324,6 @@ function montarAtivos(ativosPlanilha, dadosLocais) {
       .map(row => String(row.ticker ?? "").trim().toLowerCase())
   );
 
-  // Linhas vindas da planilha (cotação automática) + ativos cadastrados manualmente
-  // que ainda não existem na planilha (usam a cotação informada no cadastro).
   const linhas = [
     ...(ativosPlanilha ?? [])
       .filter(row => String(row.ticker ?? "").trim().toLowerCase() !== "dolar")
@@ -356,8 +337,6 @@ function montarAtivos(ativosPlanilha, dadosLocais) {
       .map(ticker => ({
         ticker: String(ticker).trim(),
         cotacao: toFloat(dadosLocais.ativos[ticker]?.cotacao),
-        // Ativos cadastrados manualmente (fora da planilha) não têm cotação do dia
-        // anterior disponível — usa a cotação atual como base (sem variação diária).
         cotacao_ontem: toFloat(dadosLocais.ativos[ticker]?.cotacao),
       })),
   ];
@@ -802,8 +781,6 @@ function Expandable({ open, children }) {
     const anterior = estadoAnteriorRef.current;
     estadoAnteriorRef.current = open;
 
-    // Primeira renderização (anterior === undefined) ou nenhuma mudança real
-    // de estado: aplica o resultado final direto, sem animar.
     if (anterior === undefined || anterior === open) {
       el.style.transition = "none";
       if (open) {
@@ -897,7 +874,7 @@ function Loading() {
 
 function LogoAtivo({ ticker, size = 72, offsetX = 0, className = "" }) {
   const [src, setSrc] = useState(() => `/img_ativos/${String(ticker).toUpperCase()}.png`);
-  const [estagio, setEstagio] = useState("local"); // "local" -> "letra"
+  const [estagio, setEstagio] = useState("local");
 
   useEffect(() => {
     setSrc(`/img_ativos/${String(ticker).toUpperCase()}.png`);
@@ -2799,8 +2776,6 @@ function ModalMeta({ valor, onChange, onSalvar, onLimpar, temMeta, onFechar }) {
 function ModalAtivo({ ticker, form, onChange, onSalvar, onLimpar, temDados, onFechar, isNovo }) {
   const precoEmDolar = ehClasseEmDolar(form.classe);
 
-  // Ao trocar a classe, o preço médio já digitado é reescrito na máscara da nova
-  // moeda (o número em si é mantido, só mudam os separadores).
   function trocarClasse(novaClasse) {
     const valor = parseMoedaInput(form.preco_medio, form.classe);
     onChange({
@@ -3168,8 +3143,6 @@ export default function App() {
   const [metaDespesa, setMetaDespesa] = useState(0);
   const scrollRef = useRef(null);
   const financasRef = useRef(null);
-  // Só permite enviar dados para a nuvem depois de ter conseguido LER a nuvem,
-  // para nunca sobrescrever dados atuais com um cache antigo do aparelho.
   const nuvemOkRef = useRef(false);
 
   const [ativoEditando, setAtivoEditando] = useState(null);
@@ -3221,9 +3194,8 @@ export default function App() {
         setLancamentos(financas.transactions);
         setMetaDespesa(financas.metaDespesa);
 
-        // Só substitui pelo que veio da nuvem se já existir algo salvo lá
-        // (evita apagar os dados locais na primeiríssima vez, antes do primeiro salvamento).
-        if (dadosNuvem !== null) nuvemOkRef.current = true;
+        if (dadosNuvem !== null)
+          nuvemOkRef.current = true;
         if (dadosNuvem && Object.keys(dadosNuvem).length > 0) {
           setDadosLocais(normalizarDadosLocais(dadosNuvem));
         }
@@ -3243,13 +3215,13 @@ export default function App() {
 
   useEffect(() => {
     salvarDadosLocais(dadosLocais);
-    if (loading) return; // evita mandar os defaults pra nuvem antes de carregar o que já existe lá
-    if (!nuvemOkRef.current) return; // não conseguiu ler a nuvem: não sobrescreve com cache antigo
+    if (loading)
+      return;
+    if (!nuvemOkRef.current)
+      return;
     salvarDadosLocaisNuvem(dadosLocais);
   }, [dadosLocais, loading]);
 
-  // App instalado (PWA) fica em segundo plano e não recarrega sozinho:
-  // ao voltar para o primeiro plano, busca de novo os dados da nuvem e da planilha.
   useEffect(() => {
     let ocupado = false;
     async function sincronizar() {
@@ -3322,11 +3294,11 @@ export default function App() {
     if (!ativoEditando) return;
     const isNovo = ativoEditando === NOVO_ATIVO_MARCADOR;
     const novoTicker = formAtivo.ticker.trim().toLowerCase() || (isNovo ? "" : String(ativoEditando).toLowerCase());
-    if (!novoTicker) return; // ticker é obrigatório, principalmente ao criar um ativo novo
+    if (!novoTicker)
+      return;
 
     setDadosLocais(prev => {
       const ativos = { ...prev.ativos };
-      // Remove a chave antiga (pode estar em maiúsculo, de antes desta correção)
       if (!isNovo) {
         const chaveAntiga = Object.keys(ativos).find(
           k => k.toLowerCase() === String(ativoEditando).toLowerCase()
@@ -3614,6 +3586,8 @@ export default function App() {
 function Style() {
   return (
     <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       svg, svg *, .recharts-wrapper, .recharts-surface { outline: none !important; }
@@ -3621,10 +3595,10 @@ function Style() {
 
             :root {
         --bg:             #0b0c0c;
-        --bg2:            #161718;
+        --bg2:            #1a1c1d;
         --bg3:            #1e2021;
         --bg4:            #292b2c;
-        --border:         rgba(255, 255, 255, 0.065);
+        --border:         rgba(255, 255, 255, 0.07);
         --border2:        rgba(255, 255, 255, 0.065);
         --text:           #f3f2ee;
         --muted:          #8d908f;
@@ -3636,8 +3610,8 @@ function Style() {
         --color-label:    #8d908f;
         --color-value:    #f3f2ee;
         --color-neutral:  #f3f2ee;
-        --navbar-bg:      rgba(20, 22, 22, 0.55);
-        --navbar-border:  rgba(255, 255, 255, 0.05);
+        --navbar-bg:      rgba(26, 28, 29, 0.55);
+        --navbar-border:  rgba(255, 255, 255, 0.07);
         --spinner-track:  rgba(10, 85, 80, 0.2);
 
         --radius-card:    24px;
@@ -3672,7 +3646,7 @@ function Style() {
         background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
         background-attachment: scroll, scroll, scroll, scroll, fixed;
         color: var(--text);
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+        font-family: "Manrope", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         text-rendering: optimizeLegibility;
@@ -3688,7 +3662,7 @@ function Style() {
 
       * {
         -webkit-tap-highlight-color: transparent;
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif !important;
+        font-family: "Manrope", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif !important;
       }
 
             .navbar {
@@ -4038,7 +4012,7 @@ function Style() {
       .card-titulo {
         font-size: 20px;
         font-weight: 700;
-        letter-spacing: -0.01em;
+        letter-spacing: -0.015em;
         color: var(--color-title);
         display: flex;
         align-items: center;
@@ -4080,8 +4054,8 @@ function Style() {
       }
       .campo-valor {
         font-size: 31px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
+        font-weight: 800;
+        letter-spacing: -0.025em;
         line-height: 1.05;
         color: var(--color-value);
         text-rendering: optimizeLegibility;
@@ -4425,9 +4399,9 @@ function Style() {
         min-height: 90px;
       }
       .heatmap-cell:hover { filter: brightness(1.15); transform: scale(1.03); }
-      .hm-ticker { color: #f5f5f7; font-size: 14px; font-weight: 700; }
-      .hm-pct    { color: #f5f5f7; font-size: 12px; font-weight: 600; }
-      .hm-brl    { color: rgba(255,255,255,0.8); font-size: 14px; }
+      .hm-ticker { color: #f5f5f7; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+      .hm-pct    { color: #f5f5f7; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .hm-brl    { color: rgba(255,255,255,0.8); font-size: 14px; font-variant-numeric: tabular-nums; }
 
       @media (min-width: 1024px) {
         .hm-pct {font-size: 14px !important;}
@@ -4455,7 +4429,7 @@ function Style() {
         font-size: 13px;
       }
       .tooltip-label { color: var(--muted); margin-bottom: var(--space-1); }
-      .tooltip-val   { font-size: 16px; font-weight: 700; }
+      .tooltip-val   { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
       .tooltip-sub   { font-size: 13px; margin-top: 2px; }
 
             .modal-overlay {
