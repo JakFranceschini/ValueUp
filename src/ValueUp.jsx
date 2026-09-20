@@ -2076,6 +2076,12 @@ function CardHeatmap({ ativos, onSelectTicker }) {
 }
 
 function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = null, onEditar = null }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (highlight) setOpen(true);
+  }, [highlight]);
+
   const ehUSD = ["stock", "reit", "etf"].includes(String(ativo.classe).toLowerCase().trim());
   const cot   = toFloat(ativo.cotacao);
   const qtd   = toFloat(ativo.quantidade);
@@ -2151,25 +2157,37 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
               </div>
               <div className="ativo-nome-texto">{ativo.nome}</div>
             </div>
-            {onEditar && (
-              <button className="btn-tema btn-tema-subcard" onClick={() => onEditar(ativo)} aria-label="Editar ativo" title="Editar ativo">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
-                </svg>
-              </button>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              {onEditar && (
+                <button className="btn-tema btn-tema-subcard" onClick={() => onEditar(ativo)} aria-label="Editar ativo" title="Editar ativo">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
+                  </svg>
+                </button>
+              )}
+              <BotaoVer onClick={() => setOpen(o => !o)} open={open} />
+            </div>
           </div>
 
-          <div className="divisor" />
+          <Expandable open={open}>
+            <div className="divisor" />
+            <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
+              {metricas.map((m) => (
+                <ListRow key={m.titulo} label={m.titulo} value={m.valor} valueColor={m.cor} plain highlight={!!m.chave && m.chave === sortBy} />
+              ))}
+            </div>
+          </Expandable>
         </>
       )}
 
-      <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
-        {metricas.map((m) => (
-          <ListRow key={m.titulo} label={m.titulo} value={m.valor} valueColor={m.cor} plain highlight={!!m.chave && m.chave === sortBy} />
-        ))}
-      </div>
+      {titulo && (
+        <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
+          {metricas.map((m) => (
+            <ListRow key={m.titulo} label={m.titulo} value={m.valor} valueColor={m.cor} plain highlight={!!m.chave && m.chave === sortBy} />
+          ))}
+        </div>
+      )}
     </SubCard>
   );
 }
