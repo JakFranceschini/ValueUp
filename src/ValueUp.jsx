@@ -1218,7 +1218,7 @@ const ANOS_PADRAO_HISTORICO = 8;
 
 function SeletorAno({ anos, anoInicio, onChange }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, height: 0 });
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
 
@@ -1226,7 +1226,14 @@ function SeletorAno({ anos, anoInicio, onChange }) {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    setPos({ top: rect.bottom + 8, left: rect.left });
+    const cardRect = triggerRef.current?.closest(".subcard")?.getBoundingClientRect();
+
+    setPos({
+      top: rect.bottom + 8,
+      left: rect.left,
+      width: rect.width,
+      height: cardRect ? cardRect.height * 0.65 : 0,
+    });
   }, []);
 
   useEffect(() => {
@@ -1258,8 +1265,8 @@ function SeletorAno({ anos, anoInicio, onChange }) {
       {open && createPortal(
         <div
           ref={menuRef}
-          className="dropdown-menu dropdown-menu-flutuante"
-          style={{ top: pos.top, left: pos.left }}
+          className="dropdown-menu dropdown-menu-flutuante dropdown-menu-select dropdown-menu-anos"
+          style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.height || undefined }}
         >
           {anos.map(ano => (
             <button
@@ -2470,12 +2477,32 @@ function LinhaCotacao({ ativo }) {
   );
 }
 
+const FILTROS_COTACAO = [
+  { texto: "Maior alta",          key: "valorizadas"    },
+  { texto: "Maior baixa",         key: "desvalorizadas" },
+];
+
+function variacaoPctAssinada(a) {
+  const v = toFloat(a.variacao_cotacao);
+  const p = Math.abs(toFloat(a.variacao_cotacao_percentual));
+  return v < 0 ? -p : p;
+}
+
 function CardCotacoesClasse({ titulo, sufixo, classe, ativos }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen]   = useState(false);
+  const [ordem, setOrdem] = useState(null);
+
+  const handleOrdem = (key) => setOrdem(o => (o === key ? null : key));
 
   const df = (ativos ?? [])
     .filter(a => String(a.classe).toLowerCase().trim() === classe)
-    .sort((a, b) => String(a.ticker).localeCompare(String(b.ticker)));
+    .sort((a, b) => {
+      if (ordem) {
+        const diff = variacaoPctAssinada(b) - variacaoPctAssinada(a);
+        if (diff !== 0) return ordem === "valorizadas" ? diff : -diff;
+      }
+      return String(a.ticker).localeCompare(String(b.ticker));
+    });
 
   if (!df.length) return null;
 
@@ -2492,11 +2519,25 @@ function CardCotacoesClasse({ titulo, sufixo, classe, ativos }) {
       </div>
 
       <Expandable open={open}>
-        <SubCard>
-          <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
-            {df.map((a, i) => <LinhaCotacao key={i} ativo={a} />)}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+          <div className="filtros-row">
+            {FILTROS_COTACAO.map(f => (
+              <BotaoFiltro
+                key={f.key}
+                ativo={ordem === f.key}
+                onClick={() => handleOrdem(f.key)}
+              >
+                {f.texto}
+              </BotaoFiltro>
+            ))}
           </div>
-        </SubCard>
+
+          <SubCard>
+            <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
+              {df.map(a => <LinhaCotacao key={a.ticker} ativo={a} />)}
+            </div>
+          </SubCard>
+        </div>
       </Expandable>
     </Card>
   );
@@ -4203,11 +4244,17 @@ function Style() {
       .list-row-clickable {
         cursor: pointer;
         margin: 0 -10px;
-        padding-left: calc(var(--row-pad-x) + 10px);
-        padding-right: calc(var(--row-pad-x) + 10px);
+        /* 9px + 1px de borda transparente = 10px, compensa exatamente a margem negativa */
+        padding-left: calc(var(--row-pad-x) + 9px);
+        padding-right: calc(var(--row-pad-x) + 9px);
         border-radius: var(--radius-subcard);
         border: 1px solid transparent;
         transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+      }
+      /* divisória alinhada ao conteúdo (mesmo padding dos outros cards), sem vazar pela margem negativa do hover */
+      .list-row-clickable:not(:last-child)::after {
+        left: calc(var(--row-pad-x) + 9px);
+        right: calc(var(--row-pad-x) + 9px);
       }
       .list-row-clickable:hover {
         background: rgba(255,255,255,0.05);
@@ -4590,6 +4637,8 @@ function Style() {
         -ms-overflow-style: none;
       }
       .dropdown-menu-select::-webkit-scrollbar { display: none; width: 0; height: 0; }
+      .dropdown-menu-select { min-width: 0; box-sizing: border-box; }
+      .dropdown-menu-anos .dropdown-item { text-align: center; justify-content: center; }
       .dropdown-menu-select .dropdown-item {
         font-size: 15px;
         padding: var(--space-3) var(--space-3);
