@@ -849,7 +849,7 @@ function Spinner() {
   );
 }
 
-function Loading() {
+function Loading({ tema }) {
   const [logoErr, setLogoErr] = useState(false);
 
   return (
@@ -859,7 +859,7 @@ function Loading() {
           <div className="loading-logo loading-logo-breathe">V</div>
         ) : (
           <img
-            src="/assets/logo.png"
+            src={tema === "light" ? "/assets/logo_light.png" : "/assets/logo_dark.png"}
             alt="ValueUp logo"
             onError={() => setLogoErr(true)}
             className="loading-logo-breathe loading-logo-img"
@@ -911,7 +911,7 @@ function LogoAtivo({ ticker, size = 72, offsetX = 0, className = "" }) {
   );
 }
 
-function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLancamento }) {
+function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLancamento, tema, onAlternarTema }) {
   const [logoErr, setLogoErr]       = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery]           = useState("");
@@ -971,7 +971,7 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
           {logoErr ? (
             <span className="navbar-logo">V</span>
           ) : (
-            <img src="/assets/logo.png" alt="ValueUp" className="navbar-logo-img"
+            <img src={tema === "light" ? "/assets/logo_light.png" : "/assets/logo_dark.png"} alt="ValueUp" className="navbar-logo-img"
               onError={() => setLogoErr(true)} />
           )}
         </div>
@@ -1016,7 +1016,7 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
                   {logoErr ? (
                     <span className="navbar-logo">V</span>
                   ) : (
-                    <img src="/assets/logo.png" alt="ValueUp" className="navbar-logo-img"
+                    <img src={tema === "light" ? "/assets/logo_light.png" : "/assets/logo_dark.png"} alt="ValueUp" className="navbar-logo-img"
                       onError={() => setLogoErr(true)} />
                   )}
                 </div>
@@ -1038,6 +1038,12 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
                     {p.titulo}
                   </button>
                 ))}
+                <button
+                  className="navbar-menu-overlay-item"
+                  onClick={onAlternarTema}
+                >
+                  {tema === "dark" ? "Tema claro" : "Tema escuro"}
+                </button>
               </div>
             </div>,
             document.body
@@ -1058,7 +1064,7 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
           </button>
         )}
 
-        {pagina === "investimentos" && (
+        {(pagina === "investimentos" || pagina === "cotacoes") && (
         <div style={{ position: "relative" }} ref={searchRef}>
           {isMobile ? (
             <button
@@ -1189,6 +1195,31 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
 
           </div>
         )}
+
+        <button
+          className="btn-tema"
+          onClick={onAlternarTema}
+          aria-label={tema === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
+          title={tema === "dark" ? "Tema claro" : "Tema escuro"}
+        >
+          {tema === "dark" ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="4.5" />
+              <line x1="12" y1="2.5" x2="12" y2="5" />
+              <line x1="12" y1="19" x2="12" y2="21.5" />
+              <line x1="4.2" y1="4.2" x2="6" y2="6" />
+              <line x1="18" y1="18" x2="19.8" y2="19.8" />
+              <line x1="2.5" y1="12" x2="5" y2="12" />
+              <line x1="19" y1="12" x2="21.5" y2="12" />
+              <line x1="4.2" y1="19.8" x2="6" y2="18" />
+              <line x1="18" y1="6" x2="19.8" y2="4.2" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.7 6.7 0 0 0 10.5 10.5Z" />
+            </svg>
+          )}
+        </button>
 
         </div>
 
@@ -2435,7 +2466,7 @@ function CardResumoCotacoes({ ativos }) {
   );
 }
 
-function LinhaCotacao({ ativo }) {
+function LinhaCotacao({ ativo, highlight }) {
   const ehUSD = CLASSES_EM_DOLAR.includes(String(ativo.classe).toLowerCase().trim());
   const formatar = ehUSD ? fmtUSD : fmtBRL;
 
@@ -2457,6 +2488,13 @@ function LinhaCotacao({ ativo }) {
       id={`cotacao-${ativo.ticker}`}
       onClick={abrirNoGoogleFinance}
       title={`Ver ${String(ativo.ticker).toUpperCase()} no Google Finance`}
+      style={{
+        transition: "box-shadow 0.4s ease, border-radius 0.4s ease",
+        ...(highlight ? {
+          boxShadow: "0 0 0 1px #13a097, 0 0 12px rgba(19,160,151,0.2)",
+          borderRadius: "var(--radius-md)",
+        } : {}),
+      }}
     >
       <div className="list-row-left" style={{ gap: "var(--space-3)" }}>
         <LogoAtivo ticker={ativo.ticker} size={36} />
@@ -2488,11 +2526,53 @@ function variacaoPctAssinada(a) {
   return v < 0 ? -p : p;
 }
 
-function CardCotacoesClasse({ titulo, sufixo, classe, ativos }) {
+function CardCotacoesClasse({ titulo, sufixo, classe, ativos, selectedTicker, searchVersion, scrollRef }) {
   const [open, setOpen]   = useState(false);
   const [ordem, setOrdem] = useState(null);
+  const [highlightTicker, setHighlightTicker] = useState(null);
 
   const handleOrdem = (key) => setOrdem(o => (o === key ? null : key));
+
+  useEffect(() => {
+    if (!selectedTicker || !searchVersion) return;
+    const pertenceAessa = (ativos ?? []).some(a =>
+      String(a.ticker) === selectedTicker &&
+      String(a.classe).toLowerCase().trim() === classe
+    );
+    if (!pertenceAessa) return;
+
+    const jaAberto = open;
+    setOpen(true);
+    setHighlightTicker(selectedTicker);
+
+    const scrollToAtivo = () => {
+      const el = document.getElementById(`cotacao-${selectedTicker}`);
+      const container = scrollRef?.current;
+      if (el && container) {
+        const containerRect = container.getBoundingClientRect();
+        const elRect        = el.getBoundingClientRect();
+        const offset        = container.scrollTop + elRect.top - containerRect.top - 110;
+        container.scrollTo({ top: offset, behavior: "smooth" });
+      }
+      setTimeout(() => setHighlightTicker(null), 2000);
+    };
+
+    let t;
+    if (jaAberto) {
+      scrollToAtivo();
+    } else {
+      const secEl = document.getElementById(`sec-cotacao-${sufixo}`);
+      const container = scrollRef?.current;
+      if (secEl && container) {
+        const containerRect = container.getBoundingClientRect();
+        const secRect       = secEl.getBoundingClientRect();
+        container.scrollTo({ top: container.scrollTop + secRect.top - containerRect.top - 110, behavior: "smooth" });
+      }
+      t = setTimeout(scrollToAtivo, 550);
+    }
+
+    return () => clearTimeout(t);
+  }, [searchVersion]);
 
   const df = (ativos ?? [])
     .filter(a => String(a.classe).toLowerCase().trim() === classe)
@@ -2534,7 +2614,7 @@ function CardCotacoesClasse({ titulo, sufixo, classe, ativos }) {
 
           <SubCard>
             <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
-              {df.map(a => <LinhaCotacao key={a.ticker} ativo={a} />)}
+              {df.map(a => <LinhaCotacao key={a.ticker} ativo={a} highlight={a.ticker === highlightTicker} />)}
             </div>
           </SubCard>
         </div>
@@ -3196,6 +3276,26 @@ export default function App() {
   const [loading, setLoading]       = useState(true);
   const [erro, setErro]             = useState(null);
   const [scrolled, setScrolled]     = useState(false);
+  const [tema, setTema] = useState(() => {
+    if (typeof window === "undefined") return "dark";
+    let salvo = "dark";
+    try {
+      salvo = localStorage.getItem("valueup_tema") || "dark";
+    } catch {}
+    document.documentElement.setAttribute("data-theme", salvo);
+    return salvo;
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", tema);
+    try {
+      localStorage.setItem("valueup_tema", tema);
+    } catch {}
+  }, [tema]);
+
+  const alternarTema = useCallback(() => {
+    setTema(t => (t === "dark" ? "light" : "dark"));
+  }, []);
   const [searchCmd, setSearchCmd] = useState(null);
   const [pagina, setPagina]         = useState("patrimonio");
   const [lancamentos, setLancamentos] = useState([]);
@@ -3461,7 +3561,7 @@ export default function App() {
   if (loading) return (
     <>
       <Style />
-      <Loading />
+      <Loading tema={tema} />
     </>
   );
 
@@ -3496,12 +3596,14 @@ export default function App() {
           scrolled={scrolled}
           ativos={ativos}
           onSelectTicker={(ticker) => {
-            if (pagina !== "investimentos") irParaPagina("investimentos");
+            if (pagina !== "investimentos" && pagina !== "cotacoes") irParaPagina("investimentos");
             setSearchCmd({ ticker, v: Date.now() });
           }}
           pagina={pagina}
           onNavigate={irParaPagina}
           onNovoLancamento={() => financasRef.current?.abrirNovoLancamento()}
+          tema={tema}
+          onAlternarTema={alternarTema}
         />
         <BotaoTopoFlutuante scrolled={scrolled} onTop={scrollToTop} />
         <main className="main">
@@ -3561,6 +3663,9 @@ export default function App() {
                     sufixo={c.sufixo}
                     classe={c.classe}
                     ativos={ativos}
+                    selectedTicker={searchCmd?.ticker}
+                    searchVersion={searchCmd?.v}
+                    scrollRef={scrollRef}
                   />
                 </div>
               ))}
@@ -3693,6 +3798,29 @@ function Style() {
         --bar-altura: 10px;
       }
 
+      :root[data-theme="light"] {
+        --bg:             #f4f6f5;
+        --bg2:            #ffffff;
+        --bg3:            #eef1f0;
+        --bg4:            #e2e7e5;
+        --border:         rgba(9, 30, 27, 0.09);
+        --border2:        rgba(9, 30, 27, 0.08);
+        --text:           #10201d;
+        --muted:          #5c6663;
+        --accent:         #0a5550;
+        --accent-h:       #0d6e68;
+        --accent-p:       #0e7971;
+        --color-title:    #0d1a18;
+        --color-subtitle: #4d5754;
+        --color-label:    #626c69;
+        --color-value:    #0d1a18;
+        --color-neutral:  #0d1a18;
+        --navbar-bg:      rgba(255, 255, 255, 0.68);
+        --navbar-border:  rgba(9, 30, 27, 0.08);
+        --spinner-track:  rgba(10, 85, 80, 0.15);
+        --bar-track:      rgba(9, 30, 27, 0.07);
+      }
+
       html, body, #root {
         height: 100%;
         background-color: var(--bg);
@@ -3709,6 +3837,18 @@ function Style() {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         text-rendering: optimizeLegibility;
+        transition: background-color 0.25s ease, color 0.25s ease;
+      }
+
+      :root[data-theme="light"] html,
+      :root[data-theme="light"] body,
+      :root[data-theme="light"] #root {
+        background-image:
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.02 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+          radial-gradient(ellipse 900px 520px at 50% -12%, rgba(10,85,80,0.06), transparent 60%),
+          radial-gradient(ellipse 700px 460px at 105% 18%, rgba(10,85,80,0.04), transparent 55%),
+          radial-gradient(ellipse 800px 500px at -10% 90%, rgba(10,85,80,0.03), transparent 55%),
+          linear-gradient(180deg, #fbfcfb 0%, #f6f8f7 45%, #f4f6f5 100%);
       }
 
             .root {
@@ -3925,6 +4065,7 @@ function Style() {
         transition: color 0.2s ease, background 0.2s ease;
       }
       .navbar-tab:hover { color: var(--color-value); background: rgba(255, 255, 255, 0.06); }
+      :root[data-theme="light"] .navbar-tab:hover { background: rgba(9, 30, 27, 0.05); }
       .navbar-tab-ativo {
         background: var(--accent);
         color: #f5f5f7;
@@ -3947,6 +4088,7 @@ function Style() {
         overflow-y: auto;
         animation: navbarMenuFade 0.2s ease;
       }
+      :root[data-theme="light"] .navbar-menu-overlay { background: rgba(244, 246, 245, 0.82); }
       @keyframes navbarMenuFade {
         from { opacity: 0; }
         to   { opacity: 1; }
@@ -3984,6 +4126,8 @@ function Style() {
         background: rgba(255, 255, 255, 0.08);
         color: var(--color-value);
       }
+      :root[data-theme="light"] .navbar-menu-overlay-item { background: rgba(9, 30, 27, 0.035); }
+      :root[data-theme="light"] .navbar-menu-overlay-item:hover { background: rgba(9, 30, 27, 0.06); }
       .navbar-menu-overlay-item.is-ativo {
         background: var(--accent);
         border-color: transparent;
@@ -4260,6 +4404,10 @@ function Style() {
         background: rgba(255,255,255,0.05);
         border-color: rgba(255,255,255,0.09);
         transform: scale(1.015);
+      }
+      :root[data-theme="light"] .list-row-clickable:hover {
+        background: rgba(9, 30, 27, 0.035);
+        border-color: rgba(9, 30, 27, 0.08);
       }
       .list-row-clickable:hover::after { opacity: 0; }
       .list-row-left { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
