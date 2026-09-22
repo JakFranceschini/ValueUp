@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
-import { initializeApp } from "firebase/app";
-import { getDatabase, ref, get, set } from "firebase/database";
-import ativosPadrao from "./ativos.json";
-import proventosPadrao from "./proventos.json";
-import evolucaoPadrao from "./evolucao.json";
+import { initializeApp } from "@firebase/app";
+import { getDatabase, ref, get, set } from "@firebase/database";
+import ativosPadrao from "./data/ativos.json";
+import proventosPadrao from "./data/proventos.json";
+import evolucaoPadrao from "./data/evolucao.json";
 
 const SHEET_BASE =
   "https://docs.google.com/spreadsheets/d/1sSujoT_tUBA0bHWRpn0aDf59cGpU0tTg3AVzBnFgbUo/export?format=csv&gid=";
@@ -873,11 +873,11 @@ function Loading({ tema }) {
 }
 
 function LogoAtivo({ ticker, size = 72, offsetX = 0, className = "" }) {
-  const [src, setSrc] = useState(() => `/img_ativos/${String(ticker).toUpperCase()}.png`);
+  const [src, setSrc] = useState(() => `/logos/${String(ticker).toUpperCase()}.png`);
   const [estagio, setEstagio] = useState("local");
 
   useEffect(() => {
-    setSrc(`/img_ativos/${String(ticker).toUpperCase()}.png`);
+    setSrc(`/logos/${String(ticker).toUpperCase()}.png`);
     setEstagio("local");
   }, [ticker]);
 
@@ -1038,12 +1038,6 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
                     {p.titulo}
                   </button>
                 ))}
-                <button
-                  className="navbar-menu-overlay-item"
-                  onClick={onAlternarTema}
-                >
-                  {tema === "dark" ? "Tema claro" : "Tema escuro"}
-                </button>
               </div>
             </div>,
             document.body
@@ -2064,7 +2058,7 @@ function HeatmapCell({ ativo, onSelectTicker }) {
       }}
     >
       {!imgErr ? (
-        <img src={`/img_ativos/${ticker}.png`} alt={ticker}
+        <img src={`/logos/${ticker}.png`} alt={ticker}
           width={40} height={40}
           onError={() => setImgErr(true)}
           style={{ objectFit: "contain", borderRadius: 6 }} />
@@ -2425,10 +2419,31 @@ function CardResumoCotacoes({ ativos }) {
   const variacaoDia = totalHoje - totalOntem;
   const variacaoDiaPercentual = totalOntem > 0 ? (variacaoDia / totalOntem) * 100 : 0;
 
-  const emAlta  = ativos.filter(a => toFloat(a.variacao_cotacao) > 0).length;
-  const emBaixa = ativos.filter(a => toFloat(a.variacao_cotacao) < 0).length;
-
   const corDiff = corVar(variacaoDia);
+
+  const porClasse = {};
+  ativos.forEach(a => {
+    const classe = String(a.classe ?? "").toLowerCase().trim();
+    if (!porClasse[classe]) porClasse[classe] = { hoje: 0, ontem: 0 };
+    porClasse[classe].hoje  += toFloat(a.total_atual);
+    porClasse[classe].ontem += toFloat(a.total_atual_ontem);
+  });
+
+  let melhorClasse = null, melhorPct = -Infinity;
+  let piorClasse = null, piorPct = Infinity;
+  Object.entries(porClasse).forEach(([classe, v]) => {
+    if (v.ontem > 0) {
+      const pct = ((v.hoje - v.ontem) / v.ontem) * 100;
+      if (pct > melhorPct) { melhorPct = pct; melhorClasse = classe; }
+      if (pct < piorPct)  { piorPct  = pct; piorClasse  = classe; }
+    }
+  });
+
+  const tituloMelhorClasse = CLASSES_ATIVOS.find(c => c.classe === melhorClasse)?.titulo ?? melhorClasse;
+  const temMelhorClasse = melhorClasse != null && Number.isFinite(melhorPct);
+
+  const tituloPiorClasse = CLASSES_ATIVOS.find(c => c.classe === piorClasse)?.titulo ?? piorClasse;
+  const temPiorClasse = piorClasse != null && Number.isFinite(piorPct) && piorClasse !== melhorClasse;
 
   return (
     <Card>
@@ -2454,11 +2469,22 @@ function CardResumoCotacoes({ ativos }) {
               valueColor={corDiff}
               plain
             />
-            <ListRow
-              label="Ativos em alta / baixa"
-              value={`${emAlta} / ${emBaixa}`}
-              plain
-            />
+            {temMelhorClasse && (
+              <ListRow
+                label="Melhor classe do dia"
+                value={`${tituloMelhorClasse} (${sinalCompleto(melhorPct)}${Math.abs(melhorPct).toFixed(2)}%)`}
+                valueColor={corVar(melhorPct)}
+                plain
+              />
+            )}
+            {temPiorClasse && (
+              <ListRow
+                label="Pior classe do dia"
+                value={`${tituloPiorClasse} (${sinalCompleto(piorPct)}${Math.abs(piorPct).toFixed(2)}%)`}
+                valueColor={corVar(piorPct)}
+                plain
+              />
+            )}
           </div>
         </div>
       </SubCard>
@@ -2744,7 +2770,12 @@ function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
         <SubCard>
           <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
             {receitas.map(tx => (
-              <div key={tx.id} className="list-row list-row-plain">
+              <div
+                key={tx.id}
+                className="list-row list-row-plain list-row-clickable"
+                onClick={() => onEditar(tx)}
+                title={`Editar ${sentenceCase(tx.name)}`}
+              >
                 <div className="list-row-left">
                   <span className="list-row-label">{sentenceCase(tx.name)}</span>
                 </div>
@@ -2752,12 +2783,6 @@ function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
                   <span className="list-row-value" style={{ color: COR_ALTA }}>
                     +{fmtBRL(tx.value)}
                   </span>
-                  <button className="btn-tema btn-tema-linha" onClick={() => onEditar(tx)} aria-label="Editar" title="Editar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
-                    </svg>
-                  </button>
                 </div>
               </div>
             ))}
@@ -2792,7 +2817,12 @@ function CardFinancasMeta({ lancamentos, onEditarLancamento, onAdicionar }) {
         <SubCard>
           <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
             {despesas.map(tx => (
-              <div key={tx.id} className="list-row list-row-plain">
+              <div
+                key={tx.id}
+                className="list-row list-row-plain list-row-clickable"
+                onClick={() => onEditarLancamento(tx)}
+                title={`Editar ${sentenceCase(tx.name)}`}
+              >
                 <div className="list-row-left">
                   <span className="list-row-label">{sentenceCase(tx.name)}</span>
                 </div>
@@ -2800,12 +2830,6 @@ function CardFinancasMeta({ lancamentos, onEditarLancamento, onAdicionar }) {
                   <span className="list-row-value" style={{ color: COR_BAIXA }}>
                     -{fmtBRL(tx.value)}
                   </span>
-                  <button className="btn-tema btn-tema-linha" onClick={() => onEditarLancamento(tx)} aria-label="Editar" title="Editar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
-                    </svg>
-                  </button>
                 </div>
               </div>
             ))}
