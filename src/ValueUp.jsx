@@ -591,6 +591,28 @@ function IconeCard({ nome, size = 21 }) {
           <path d="M15 7h5v5" />
         </svg>
       );
+    case "config":
+      return (
+        <svg {...p} className="card-titulo-icone">
+          <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+          <circle cx="12" cy="12" r="2.8" />
+        </svg>
+      );
+    case "aparencia":
+      return (
+        <svg {...p} className="card-titulo-icone">
+          <path d="m14.622 17.897-10.68-2.913" />
+          <path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z" />
+          <path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15" />
+        </svg>
+      );
+    case "valores":
+      return (
+        <svg {...p} className="card-titulo-icone">
+          <path d="M12 2v20" />
+          <path d="M17 5.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      );
     case "seta-cima":
       return (
         <svg {...p} className="card-titulo-icone">
@@ -873,11 +895,11 @@ function Loading({ tema }) {
 }
 
 function LogoAtivo({ ticker, size = 72, offsetX = 0, className = "" }) {
-  const [src, setSrc] = useState(() => `/logos/${String(ticker).toUpperCase()}.png`);
+  const [src, setSrc] = useState(() => `/logos_ativos/${String(ticker).toUpperCase()}.png`);
   const [estagio, setEstagio] = useState("local");
 
   useEffect(() => {
-    setSrc(`/logos/${String(ticker).toUpperCase()}.png`);
+    setSrc(`/logos_ativos/${String(ticker).toUpperCase()}.png`);
     setEstagio("local");
   }, [ticker]);
 
@@ -911,7 +933,7 @@ function LogoAtivo({ ticker, size = 72, offsetX = 0, className = "" }) {
   );
 }
 
-function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLancamento, tema, onAlternarTema }) {
+function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) {
   const [logoErr, setLogoErr]       = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery]           = useState("");
@@ -1043,20 +1065,6 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
             document.body
           )}
         </div>
-
-        {pagina === "financas" && (
-          <button
-            className="btn-tema"
-            title="Novo lançamento"
-            onClick={onNovoLancamento}
-            aria-label="Novo lançamento"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
-        )}
 
         {(pagina === "investimentos" || pagina === "cotacoes") && (
         <div style={{ position: "relative" }} ref={searchRef}>
@@ -1191,28 +1199,15 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, onNovoLa
         )}
 
         <button
-          className="btn-tema"
-          onClick={onAlternarTema}
-          aria-label={tema === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
-          title={tema === "dark" ? "Tema claro" : "Tema escuro"}
+          className={`btn-tema${pagina === "configuracoes" ? " btn-tema-ativo" : ""}`}
+          onClick={() => onNavigate("configuracoes")}
+          aria-label="Configurações"
+          title="Configurações"
         >
-          {tema === "dark" ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="4.5" />
-              <line x1="12" y1="2.5" x2="12" y2="5" />
-              <line x1="12" y1="19" x2="12" y2="21.5" />
-              <line x1="4.2" y1="4.2" x2="6" y2="6" />
-              <line x1="18" y1="18" x2="19.8" y2="19.8" />
-              <line x1="2.5" y1="12" x2="5" y2="12" />
-              <line x1="19" y1="12" x2="21.5" y2="12" />
-              <line x1="4.2" y1="19.8" x2="6" y2="18" />
-              <line x1="18" y1="6" x2="19.8" y2="4.2" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.7 6.7 0 0 0 10.5 10.5Z" />
-            </svg>
-          )}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+            <circle cx="12" cy="12" r="2.8" />
+          </svg>
         </button>
 
         </div>
@@ -2058,7 +2053,7 @@ function HeatmapCell({ ativo, onSelectTicker }) {
       }}
     >
       {!imgErr ? (
-        <img src={`/logos/${ticker}.png`} alt={ticker}
+        <img src={`/logos_ativos/${ticker}.png`} alt={ticker}
           width={40} height={40}
           onError={() => setImgErr(true)}
           style={{ objectFit: "contain", borderRadius: 6 }} />
@@ -2672,7 +2667,7 @@ async function salvarLancamentos(transactions, metaDespesa) {
   }
 }
 
-function CardFinancasResumo({ totais, meta, gasto, onEditarMeta }) {
+function CardFinancasResumo({ totais, meta, gasto }) {
   const corNet = corVar(totais.net);
 
   const restante = meta - gasto;
@@ -2681,17 +2676,9 @@ function CardFinancasResumo({ totais, meta, gasto, onEditarMeta }) {
 
   return (
     <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
-        <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="financas" />Finanças</h2>
-        </SubCard>
-        <button className="btn-tema" onClick={onEditarMeta} aria-label={meta > 0 ? "Editar meta" : "Definir meta"} title={meta > 0 ? "Editar meta" : "Definir meta"}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
-          </svg>
-        </button>
-      </div>
+      <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
+        <h2 className="card-titulo"><IconeCard nome="financas" />Finanças</h2>
+      </SubCard>
 
       <SubCard>
         <div className="list-row list-row-plain" style={{ marginTop: "calc(var(--space-4) * -1)" }}>
@@ -2720,15 +2707,24 @@ function CardFinancasResumo({ totais, meta, gasto, onEditarMeta }) {
       </SubCard>
 
       <SubCard>
-        <div className="card-header" style={{ marginBottom: meta > 0 ? "var(--space-2)" : 0 }}>
-          <span className="campo-titulo">{meta > 0 ? "Progresso do mês" : "Nenhuma meta definida"}</span>
-        </div>
+        {meta === 0 && (
+          <div className="card-header" style={{ marginBottom: 0 }}>
+            <span className="campo-titulo">Nenhuma meta definida</span>
+          </div>
+        )}
 
         {meta > 0 ? (
           <>
-            <BarraSimples pct={pct} cor={excedeu ? COR_BAIXA : COR_ALTA} />
-            <div style={{ marginTop: "var(--space-3)", marginBottom: "calc(var(--space-4) * -1)" }}>
-              <ListRow label="Meta definida" value={fmtBRL(meta)} plain />
+            <div className="list-row list-row-plain" style={{ marginTop: "calc(var(--space-4) * -1)" }}>
+              <div className="list-row-left">
+                <span className="list-row-label">Meta de gastos</span>
+              </div>
+              <div className="list-row-right">
+                <span className="list-row-value">{fmtBRL(meta)}</span>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
               <ListRow label="Já gasto" value={`-${fmtBRL(gasto)}`} valueColor={excedeu ? COR_BAIXA : undefined} plain />
               <ListRow
                 label={excedeu ? "Ultrapassou em" : "Ainda pode gastar"}
@@ -2739,7 +2735,7 @@ function CardFinancasResumo({ totais, meta, gasto, onEditarMeta }) {
             </div>
           </>
         ) : (
-          <div className="campo-titulo">Defina um limite mensal para acompanhar seus gastos.</div>
+          <div className="campo-titulo">Defina um limite mensal nas configurações para acompanhar seus gastos.</div>
         )}
       </SubCard>
     </Card>
@@ -3052,7 +3048,7 @@ function ModalReserva({ valor, onChangeValor, onSalvar, onFechar }) {
   );
 }
 
-function ModalListaAnos({ titulo, campos, linhas, onChange, onSalvar, onFechar }) {
+function ModalListaAnos({ titulo, campos, linhas, onChange, onSalvar, onFechar, className }) {
   function atualizarLinha(i, campo, valor) {
     const novas = linhas.slice();
     novas[i] = { ...novas[i], [campo]: valor };
@@ -3073,7 +3069,7 @@ function ModalListaAnos({ titulo, campos, linhas, onChange, onSalvar, onFechar }
   }
 
   return (
-    <ModalFinancas titulo={titulo} onFechar={onFechar}>
+    <ModalFinancas titulo={titulo} onFechar={onFechar} className={className}>
       <div className="lista-anos-wrap">
         {linhas.map((linha, i) => (
           <div key={i} className="lista-anos-linha">
@@ -3130,7 +3126,7 @@ function ModalListaAnos({ titulo, campos, linhas, onChange, onSalvar, onFechar }
 
 function ModalMetasAlocacao({ form, onChange, onSalvar, onFechar }) {
   return (
-    <ModalFinancas titulo="Metas de alocação" onFechar={onFechar}>
+    <ModalFinancas titulo="Metas de alocação" onFechar={onFechar} className="modal-evolucao">
       <div className="lista-anos-wrap">
         {ALOCACAO_CLASSES.map(c => (
           <div className="lista-anos-linha" key={c.sufixo}>
@@ -3158,9 +3154,6 @@ function PaginaFinancas({ lancamentos, setLancamentos, metaDespesa, setMetaDespe
   const [modalAberto, setModalAberto] = useState(false);
   const [editandoId, setEditandoId]   = useState(null);
   const [form, setForm]               = useState({ name: "", value: "", type: "income" });
-
-  const [modalMetaAberto, setModalMetaAberto] = useState(false);
-  const [metaInput, setMetaInput]             = useState("");
 
   const totais = {
     income:  lancamentos.filter(t => t.type === "income" ).reduce((s, t) => s + t.value, 0),
@@ -3216,26 +3209,10 @@ function PaginaFinancas({ lancamentos, setLancamentos, metaDespesa, setMetaDespe
     setModalAberto(false);
   }
 
-  function abrirModalMeta() {
-    setMetaInput(metaDespesa > 0 ? metaDespesa.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
-    setModalMetaAberto(true);
-  }
-
-  function salvarMeta() {
-    const valor = parseBRL(metaInput);
-    setMetaDespesa(isNaN(valor) || valor < 0 ? 0 : valor);
-    setModalMetaAberto(false);
-  }
-
-  function limparMeta() {
-    setMetaDespesa(0);
-    setModalMetaAberto(false);
-  }
-
   return (
     <>
       <div id="sec-financas-resumo">
-        <CardFinancasResumo totais={totais} meta={metaDespesa} gasto={totais.expense} onEditarMeta={abrirModalMeta} />
+        <CardFinancasResumo totais={totais} meta={metaDespesa} gasto={totais.expense} />
       </div>
       <div id="sec-financas-comparativo">
         <CardFinancasComparativo lancamentos={lancamentos} onEditar={abrirEdicaoLancamento} onAdicionar={abrirNovoLancamento} />
@@ -3260,16 +3237,6 @@ function PaginaFinancas({ lancamentos, setLancamentos, metaDespesa, setMetaDespe
         />
       )}
 
-      {modalMetaAberto && (
-        <ModalMeta
-          valor={metaInput}
-          onChange={v => setMetaInput(formatarBRL(v))}
-          onSalvar={salvarMeta}
-          onLimpar={limparMeta}
-          temMeta={metaDespesa > 0}
-          onFechar={() => setModalMetaAberto(false)}
-        />
-      )}
     </>
   );
 }
@@ -3292,6 +3259,78 @@ function numParaMoedaInput(n, classe) {
   if (!v) return "";
   const locale = ehClasseEmDolar(classe) ? "en-US" : "pt-BR";
   return v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function LinhaConfig({ label, onClick }) {
+  return (
+    <div className="list-row list-row-plain list-row-clickable" onClick={onClick}>
+      <div className="list-row-left">
+        <span className="list-row-label">{label}</span>
+      </div>
+      <div className="list-row-right">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-label)" }}>
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarReserva, onEditarAlocacao, onEditarProventos, onEditarMetaDespesa }) {
+  return (
+    <>
+      <div id="sec-configuracoes-editar">
+      <Card>
+        <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
+          <h2 className="card-titulo"><IconeCard nome="valores" />Valores</h2>
+        </SubCard>
+
+        <SubCard>
+          <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
+            <LinhaConfig label="Editar evolução do patrimônio" onClick={onEditarEvolucao} />
+            <LinhaConfig label="Editar reserva" onClick={onEditarReserva} />
+            <LinhaConfig label="Editar alocação" onClick={onEditarAlocacao} />
+            <LinhaConfig label="Editar proventos" onClick={onEditarProventos} />
+            <LinhaConfig label="Editar meta de gastos" onClick={onEditarMetaDespesa} />
+          </div>
+        </SubCard>
+      </Card>
+      </div>
+
+      <div id="sec-configuracoes-aparencia">
+      <Card>
+        <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
+          <h2 className="card-titulo"><IconeCard nome="aparencia" />Aparência</h2>
+        </SubCard>
+
+        <SubCard>
+          <div className="list-row list-row-plain" style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
+            <div className="list-row-left">
+              <span className="list-row-label">Mudar tema</span>
+            </div>
+            <div className="list-row-right">
+              <div className="config-tema-toggle">
+                <button
+                  className={`config-tema-btn${tema === "light" ? " is-ativo" : ""}`}
+                  onClick={() => tema !== "light" && onAlternarTema()}
+                >
+                  Claro
+                </button>
+                <button
+                  className={`config-tema-btn${tema === "dark" ? " is-ativo" : ""}`}
+                  onClick={() => tema !== "dark" && onAlternarTema()}
+                >
+                  Escuro
+                </button>
+              </div>
+            </div>
+          </div>
+        </SubCard>
+      </Card>
+      </div>
+    </>
+  );
 }
 
 export default function App() {
@@ -3342,6 +3381,9 @@ export default function App() {
 
   const [evolucaoModalAberto, setEvolucaoModalAberto] = useState(false);
   const [formEvolucao, setFormEvolucao]                 = useState([]);
+
+  const [metaModalAberto, setMetaModalAberto] = useState(false);
+  const [metaInput, setMetaInput]               = useState("");
 
   const irParaPagina = useCallback((p) => {
     setPagina(p);
@@ -3582,6 +3624,21 @@ export default function App() {
     setEvolucaoModalAberto(false);
   }
 
+  function abrirEdicaoMetaDespesa() {
+    setMetaInput(numParaBRLInput(metaDespesa));
+    setMetaModalAberto(true);
+  }
+
+  function salvarMetaDespesa() {
+    setMetaDespesa(parseBRLInput(metaInput));
+    setMetaModalAberto(false);
+  }
+
+  function limparMetaDespesa() {
+    setMetaDespesa(0);
+    setMetaModalAberto(false);
+  }
+
   if (loading) return (
     <>
       <Style />
@@ -3625,16 +3682,14 @@ export default function App() {
           }}
           pagina={pagina}
           onNavigate={irParaPagina}
-          onNovoLancamento={() => financasRef.current?.abrirNovoLancamento()}
           tema={tema}
-          onAlternarTema={alternarTema}
         />
         <BotaoTopoFlutuante scrolled={scrolled} onTop={scrollToTop} />
         <main className="main">
 
           {pagina === "patrimonio" && (
             <>
-              <div id="sec-patrimonio"><CardPatrimonio totais={totais} evolucao={dadosLocais.evolucao} onEditarEvolucao={abrirEdicaoEvolucao} /></div>
+              <div id="sec-patrimonio"><CardPatrimonio totais={totais} evolucao={dadosLocais.evolucao} /></div>
               <div id="sec-classes-patrimonio"><CardClassesAtivos totais={totais} reservas={reservas} /></div>
             </>
           )}
@@ -3642,11 +3697,11 @@ export default function App() {
           {pagina === "investimentos" && (
             <>
               <div id="sec-resumo-investimentos"><CardResumoInvestimentos totais={totais} /></div>
-              <div id="sec-reserva"><CardReserva reservas={reservas} alocacao={alocacao} totais={totais} onEditar={abrirEdicaoReserva} /></div>
-              <div id="sec-alocacao"><CardAlocacao alocacao={alocacao} onEditar={abrirEdicaoMetas} /></div>
+              <div id="sec-reserva"><CardReserva reservas={reservas} alocacao={alocacao} totais={totais} /></div>
+              <div id="sec-alocacao"><CardAlocacao alocacao={alocacao} /></div>
               <div id="sec-brasil-exterior"><CardBrasilExterior alocacao={alocacao} totais={totais} /></div>
               <div id="sec-aporte"><CardAporte ativos={ativos} alocacao={alocacao} /></div>
-              <div id="sec-proventos"><CardProventos proventos={dadosLocais.proventos} onEditar={abrirEdicaoProventos} /></div>
+              <div id="sec-proventos"><CardProventos proventos={dadosLocais.proventos} /></div>
               <div id="sec-heatmap">
                 <CardHeatmap
                   ativos={ativos}
@@ -3706,6 +3761,18 @@ export default function App() {
             />
           )}
 
+          {pagina === "configuracoes" && (
+            <PaginaConfiguracoes
+              tema={tema}
+              onAlternarTema={alternarTema}
+              onEditarEvolucao={abrirEdicaoEvolucao}
+              onEditarReserva={abrirEdicaoReserva}
+              onEditarAlocacao={abrirEdicaoMetas}
+              onEditarProventos={abrirEdicaoProventos}
+              onEditarMetaDespesa={abrirEdicaoMetaDespesa}
+            />
+          )}
+
           <footer className="app-footer">
             <span className="app-footer-linha">Meu programa de acompanhamento de patrimônio, investimentos e finanças</span>
             <span className="app-footer-linha">Por Jakson Franceschini</span>
@@ -3752,6 +3819,7 @@ export default function App() {
           onChange={setFormProventos}
           onSalvar={salvarProventos}
           onFechar={() => setProventosModalAberto(false)}
+          className="modal-evolucao"
         />
       )}
 
@@ -3765,6 +3833,18 @@ export default function App() {
           onChange={setFormEvolucao}
           onSalvar={salvarEvolucao}
           onFechar={() => setEvolucaoModalAberto(false)}
+          className="modal-evolucao"
+        />
+      )}
+
+      {metaModalAberto && (
+        <ModalMeta
+          valor={metaInput}
+          onChange={v => setMetaInput(formatarBRLInput(v))}
+          onSalvar={salvarMetaDespesa}
+          onLimpar={limparMetaDespesa}
+          temMeta={metaDespesa > 0}
+          onFechar={() => setMetaModalAberto(false)}
         />
       )}
     </>
@@ -3949,6 +4029,31 @@ function Style() {
       .btn-tema:active { transform: scale(0.96); }
       .btn-tema-subcard { background: var(--bg3); }
       .btn-tema-linha { width: 32px; height: 32px; font-size: 14px; margin-left: var(--space-2); }
+      .btn-tema-ativo { background: var(--accent); border-color: var(--accent); color: #f5f5f7; }
+      .btn-tema-ativo:hover { background: var(--accent); }
+
+      .config-tema-toggle {
+        display: flex;
+        gap: 2px;
+        background: var(--bg3);
+        border: 1px solid var(--border2);
+        border-radius: 999px;
+        padding: 3px;
+      }
+      .config-tema-btn {
+        border: none;
+        background: transparent;
+        padding: 7px 16px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--color-label);
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease;
+        font-family: inherit;
+      }
+      .config-tema-btn.is-ativo { background: var(--accent); color: #f5f5f7; }
+      .config-tema-btn:not(.is-ativo):hover { color: var(--text); }
 
             .navbar-search-inline {
         width: 240px;
@@ -4913,6 +5018,30 @@ function Style() {
         font-size: 14px;
         text-align: center;
         padding: var(--space-4) 0;
+      }
+
+            @media (min-width: 860px) {
+        .modal-sheet.modal-evolucao {
+          max-width: 960px;
+        }
+        .modal-sheet.modal-evolucao .lista-anos-wrap {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          align-items: stretch;
+        }
+        .modal-sheet.modal-evolucao .lista-anos-linha {
+          height: 100%;
+        }
+        .modal-sheet.modal-evolucao .lista-anos-linha-header {
+          flex-wrap: wrap;
+        }
+        .modal-sheet.modal-evolucao .lista-anos-ano {
+          max-width: none;
+          flex: 1 1 90px;
+        }
+        .modal-sheet.modal-evolucao .lista-anos-valor {
+          flex: 1 1 100%;
+        }
       }
 
             .loading-page {
