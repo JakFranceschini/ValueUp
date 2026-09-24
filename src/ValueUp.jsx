@@ -1631,7 +1631,7 @@ function BarraAlocacao({ dados }) {
             <div key={d.titulo} className="alocacao-item">
               <ListRow
                 label={
-                  <span style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: cor, flexShrink: 0 }} />
                       {d.titulo}
@@ -1648,6 +1648,13 @@ function BarraAlocacao({ dados }) {
               />
               <div className="alocacao-mini-barra">
                 <div className="alocacao-mini-barra-fill" style={{ width: `${Math.max(Math.min(d.pct, 100), 0)}%`, background: cor }} />
+                {d.ideal > 0 && (
+                  <div
+                    className="alocacao-meta-marcador"
+                    title={`Meta ${d.ideal.toFixed(1)}%`}
+                    style={{ left: `${Math.max(Math.min(d.ideal, 100), 0)}%` }}
+                  />
+                )}
               </div>
             </div>
           );
@@ -3900,6 +3907,9 @@ function Style() {
 
                 --bar-track:  rgba(255, 255, 255, 0.06);
         --bar-altura: 10px;
+
+        --shadow-card:    0 1px 0 rgba(255,255,255,0.05) inset, 0 24px 48px -18px rgba(0,0,0,0.6), 0 8px 20px -6px rgba(0,0,0,0.35);
+        --shadow-subcard: 0 1px 0 rgba(255,255,255,0.03) inset, 0 12px 28px -10px rgba(0,0,0,0.4), 0 3px 10px rgba(0,0,0,0.22);
       }
 
       :root[data-theme="light"] {
@@ -3923,6 +3933,9 @@ function Style() {
         --navbar-border:  rgba(9, 30, 27, 0.08);
         --spinner-track:  rgba(10, 85, 80, 0.15);
         --bar-track:      rgba(9, 30, 27, 0.07);
+
+        --shadow-card:    0 1px 0 rgba(255,255,255,0.7) inset, 0 24px 44px -20px rgba(16,32,29,0.18), 0 6px 14px -4px rgba(16,32,29,0.07);
+        --shadow-subcard: 0 1px 0 rgba(255,255,255,0.6) inset, 0 10px 22px -8px rgba(16,32,29,0.1), 0 2px 8px rgba(16,32,29,0.05);
       }
 
       html, body, #root {
@@ -4334,12 +4347,12 @@ function Style() {
         display: flex;
         flex-direction: column;
         gap: var(--space-4) !important;
-        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.32);
+        box-shadow: var(--shadow-card);
         backface-visibility: hidden;
         perspective: 1000px;
         transform: translate3d(0,0,0);
         will-change: transform;
-        transition: background 0.3s ease, border-color 0.3s ease;
+        transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
       }
       .card-titulo {
         font-size: 20px;
@@ -4366,7 +4379,7 @@ function Style() {
         display: flex;
         flex-direction: column;
         gap: var(--space-1) !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        box-shadow: var(--shadow-subcard);
         transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.3s ease;
         position: relative;
         overflow: hidden;
@@ -4974,26 +4987,41 @@ function Style() {
       }
       .alocacao-item {
         position: relative;
-        padding-bottom: var(--space-3);
+        padding-bottom: var(--space-2);
+        border-radius: var(--radius-md);
       }
       .alocacao-item:not(:last-child) {
-        margin-bottom: var(--space-1);
+        margin-bottom: 0;
+      }
+      .alocacao-item:last-child {
+        padding-bottom: 18px;
       }
       .alocacao-item .list-row::after { display: none; }
       .alocacao-item .list-row { padding-bottom: var(--space-1); }
       .alocacao-mini-barra {
+        position: relative;
         display: block;
         width: 100%;
-        height: 6px;
+        height: 7px;
         border-radius: var(--radius-pill);
-        background: var(--bg4);
+        background: var(--bar-track);
         overflow: hidden;
       }
       .alocacao-mini-barra-fill {
         display: block;
         height: 100%;
         border-radius: var(--radius-pill);
-        transition: width 0.45s ease;
+        transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+      }
+      .alocacao-meta-marcador {
+        position: absolute;
+        top: -2.5px;
+        width: 2px;
+        height: 12px;
+        border-radius: 1px;
+        background: var(--text);
+        opacity: 0.45;
+        transform: translateX(-1px);
       }
       .btn-remover-linha {
         background: rgba(138,53,53,0.12);
