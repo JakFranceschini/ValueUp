@@ -1434,11 +1434,23 @@ function CardPatrimonio({ totais, evolucao, onEditarEvolucao }) {
 
   const dataEvolucao = dataEvolucaoBruta.filter(d => parseInt(d.ano, 10) >= anoInicioEvolucao);
 
+  const primeiroEvolucao = dataEvolucao[0];
+  const ultimoEvolucao   = dataEvolucao[dataEvolucao.length - 1];
+  const anosCrescimento  = dataEvolucao.length > 1
+    ? parseInt(ultimoEvolucao.ano, 10) - parseInt(primeiroEvolucao.ano, 10)
+    : 0;
+  const mediaCrescimentoAnual = (anosCrescimento > 0 && primeiroEvolucao?.valor > 0)
+    ? (((ultimoEvolucao.valor - primeiroEvolucao.valor) / primeiroEvolucao.valor) * 100) / anosCrescimento
+    : 0;
+  const mediaCrescimentoAnualReais = anosCrescimento > 0
+    ? (ultimoEvolucao.valor - primeiroEvolucao.valor) / anosCrescimento
+    : 0;
+
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="patrimonio" />Patrimônio</h2>
+          <h2 className="card-titulo">Patrimônio</h2>
         </SubCard>
         {onEditarEvolucao && (
           <button className="btn-tema" onClick={onEditarEvolucao} aria-label="Editar evolução do patrimônio" title="Editar evolução do patrimônio">
@@ -1487,6 +1499,23 @@ function CardPatrimonio({ totais, evolucao, onEditarEvolucao }) {
       {temEvolucao && (
         <SubCard style={{ overflow: "hidden" }}>
           <HeroValor titulo="Patrimônio atual" valor={fmtBRL(total)} visible={!!total} />
+          <div
+            className="campo-titulo"
+            style={{
+              marginTop: "var(--space-2)",
+              fontSize: "13px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              opacity: anosCrescimento > 0 ? 1 : 0,
+              transition: "opacity 0.55s cubic-bezier(0.22,1,0.36,1)",
+            }}
+          >
+            Média anual
+            <span style={{ color: corVar(mediaCrescimentoAnualReais), fontWeight: 600 }}>
+              {sinal(mediaCrescimentoAnualReais)}{fmtBRL(mediaCrescimentoAnualReais)} ({sinal(mediaCrescimentoAnual)}{mediaCrescimentoAnual.toFixed(2)}%)
+            </span>
+          </div>
           <div className="card-header" style={{ margin: "var(--space-2) 0" }}>
             <SeletorAno anos={anosNumEvolucao} anoInicio={anoInicioEvolucao} onChange={setAnoInicioEvolucao} />
           </div>
@@ -1570,11 +1599,18 @@ function CardRentabilidade({ rentabilidade, onEditarRentabilidade }) {
     ? (dataRent.reduce((acc, d) => acc * (1 + d.valor / 100), 1) - 1) * 100
     : 0;
 
+  const anosDecorridosRent = dataRent.length > 1
+    ? parseInt(dataRent[dataRent.length - 1].ano, 10) - parseInt(dataRent[0].ano, 10)
+    : 0;
+  const mediaAnual = anosDecorridosRent > 0
+    ? acumulada / anosDecorridosRent
+    : 0;
+
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="investimentos" />Rentabilidade</h2>
+          <h2 className="card-titulo">Rentabilidade</h2>
         </SubCard>
       </div>
 
@@ -1582,11 +1618,28 @@ function CardRentabilidade({ rentabilidade, onEditarRentabilidade }) {
         <>
           <SubCard style={{ overflow: "hidden" }}>
             <HeroValor
-              titulo={`Rentabilidade acumulada desde ${anoInicioRent}`}
+              titulo="Rentabilidade acumulada"
               valor={`${sinal(acumulada)}${acumulada.toFixed(2)}%`}
               cor="var(--color-mono)"
               visible={dataRent.length > 0}
             />
+            <div
+              className="campo-titulo"
+              style={{
+                marginTop: "var(--space-2)",
+                fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                opacity: dataRent.length > 0 ? 1 : 0,
+                transition: "opacity 0.55s cubic-bezier(0.22,1,0.36,1)",
+              }}
+            >
+              Média anual
+              <span style={{ color: corVar(mediaAnual), fontWeight: 600 }}>
+                {sinal(mediaAnual)}{mediaAnual.toFixed(2)}%
+              </span>
+            </div>
             <div className="card-header" style={{ margin: "var(--space-2) 0" }}>
               <SeletorAno anos={anosNumRent} anoInicio={anoInicioRent} onChange={setAnoInicioRent} />
             </div>
@@ -1642,7 +1695,7 @@ function CardReserva({ reservas, alocacao, totais, onEditar }) {
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="reserva" />Reserva</h2>
+          <h2 className="card-titulo">Reserva</h2>
         </SubCard>
         {onEditar && (
           <button className="btn-tema" onClick={onEditar} aria-label="Editar reserva" title="Editar reserva">
@@ -1703,7 +1756,7 @@ function CardResumoInvestimentos({ totais }) {
   return (
     <Card>
       <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-        <h2 className="card-titulo"><IconeCard nome="investimentos" />Investimentos</h2>
+        <h2 className="card-titulo">Investimentos</h2>
       </SubCard>
 
       <SubCard>
@@ -1804,7 +1857,7 @@ function CardClassesAtivos({ totais, reservas }) {
   return (
     <Card>
       <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-        <h2 className="card-titulo"><IconeCard nome="alocacao" />Alocação do patrimônio</h2>
+        <h2 className="card-titulo">Alocação do patrimônio</h2>
       </SubCard>
 
       <SubCard>
@@ -1840,7 +1893,7 @@ function CardAlocacao({ alocacao, onEditar }) {
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="alocacao" />Alocação</h2>
+          <h2 className="card-titulo">Alocação</h2>
         </SubCard>
         {onEditar && (
           <button className="btn-tema" onClick={onEditar} aria-label="Editar metas de alocação" title="Editar metas de alocação">
@@ -1857,7 +1910,7 @@ function CardAlocacao({ alocacao, onEditar }) {
   );
 }
 
-const BRASIL_EXTERIOR_COR = { brasil: "#16bdb4", exterior: "#8d908f" };
+const BRASIL_EXTERIOR_COR = { brasil: "#0a5550", exterior: PALETA_ALOCACAO[1] };
 
 function CardBrasilExterior({ alocacao, totais }) {
   if (!alocacao?.length || !totais?.length) return null;
@@ -1887,20 +1940,43 @@ function CardBrasilExterior({ alocacao, totais }) {
   return (
     <Card>
       <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-        <h2 className="card-titulo"><IconeCard nome="globo" />Brasil x Exterior</h2>
+        <h2 className="card-titulo">Brasil x Exterior</h2>
       </SubCard>
 
       <SubCard>
-        <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
-          {dados.map(d => (
-            <ListRow
+        <div style={{ display: "flex", width: "100%", height: 8, borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
+          {dados.filter(d => d.pct > 0).map(d => (
+            <div
               key={d.titulo}
-              label={d.titulo}
-              value={`${d.pct.toFixed(1)}%`}
-              sub={fmtBRL(d.valor)}
-              plain
+              style={{ width: `${d.pct}%`, background: d.cor, transition: "width 0.3s ease" }}
+              title={`${d.titulo}: ${d.pct.toFixed(1)}%`}
             />
           ))}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>
+          {dados.map((d, i) => {
+            const alinhaDireita = i === 1;
+            return (
+              <div
+                key={d.titulo}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexDirection: alinhaDireita ? "row-reverse" : "row",
+                }}
+              >
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: d.cor, flexShrink: 0 }} />
+                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.3, alignItems: alinhaDireita ? "flex-end" : "flex-start" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                    {d.titulo} · {d.pct.toFixed(1)}%
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--color-label)" }}>{fmtBRL(d.valor)}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </SubCard>
     </Card>
@@ -1953,7 +2029,7 @@ function CardAporte({ ativos, alocacao }) {
   return (
     <Card>
       <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-        <h2 className="card-titulo"><IconeCard nome="aporte" />Aporte</h2>
+        <h2 className="card-titulo">Aporte</h2>
       </SubCard>
 
       {classePrio && (() => {
@@ -2057,7 +2133,6 @@ function GraficoProventos({ porAno }) {
         {porAno.map((d, i) => {
           const heightPct = (d.valor / vMax) * 100;
           const isHov     = hovIdx === i;
-          const isCurrent = d.ano === anoAtual;
 
           return (
             <div
@@ -2079,7 +2154,7 @@ function GraficoProventos({ porAno }) {
                 width: "100%",
                 height: `${heightPct}%`,
                 minHeight: d.valor > 0 ? 4 : 0,
-                background: isHov ? "#13a097" : isCurrent ? "#13a097" : "#0a5550",
+                background: isHov ? "#13a097" : "#0a5550",
                 transition: "height 0.6s cubic-bezier(0.4,0,0.2,1), background 0.15s",
                 position: "relative",
                 overflow: "hidden",
@@ -2128,13 +2203,19 @@ function CardProventos({ proventos, onEditar }) {
   if (!proventos?.length) return null;
 
   const totalRecebido = porAnoCompleto.reduce((s, r) => s + r.valor, 0);
+  const anosDecorridosProventos = porAnoCompleto.length > 1
+    ? parseInt(porAnoCompleto[porAnoCompleto.length - 1].ano, 10) - parseInt(porAnoCompleto[0].ano, 10)
+    : 0;
+  const mediaAnualProventos = anosDecorridosProventos > 0
+    ? totalRecebido / anosDecorridosProventos
+    : 0;
   const porAno = porAnoCompleto.filter(d => parseInt(d.ano, 10) >= anoInicioProventos);
 
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="proventos" />Proventos</h2>
+          <h2 className="card-titulo">Proventos</h2>
         </SubCard>
         {onEditar && (
           <button className="btn-tema" onClick={onEditar} aria-label="Editar proventos" title="Editar proventos">
@@ -2148,6 +2229,23 @@ function CardProventos({ proventos, onEditar }) {
 
       <SubCard style={{ overflow: "hidden" }}>
         <HeroValor titulo="Total recebido" valor={fmtBRL(totalRecebido)} visible={!!totalRecebido} />
+        <div
+          className="campo-titulo"
+          style={{
+            marginTop: "var(--space-2)",
+            fontSize: "13px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            opacity: mediaAnualProventos > 0 ? 1 : 0,
+            transition: "opacity 0.55s cubic-bezier(0.22,1,0.36,1)",
+          }}
+        >
+          Média anual
+          <span style={{ color: "var(--color-mono)", fontWeight: 600 }}>
+            {fmtBRL(mediaAnualProventos)}
+          </span>
+        </div>
         <div className="card-header" style={{ margin: "var(--space-2) 0" }}>
           <SeletorAno anos={anosNumProventos} anoInicio={anoInicioProventos} onChange={setAnoInicioProventos} />
         </div>
@@ -2176,7 +2274,7 @@ function HeatmapCell({ ativo, onSelectTicker }) {
       title={`Ver ${ticker} na lista`}
       style={{
         background: cor,
-        boxShadow: hovered ? `0 6px 24px ${cor}99, 0 2px 8px ${cor}55` : "none",
+        boxShadow: hovered ? "inset 0 0 0 2px rgba(255,255,255,0.4)" : "none",
       }}
     >
       {!imgErr ? (
@@ -2207,13 +2305,13 @@ function CardHeatmap({ ativos, onSelectTicker }) {
     <Card>
       <div className="card-header">
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="heatmap" />Mapa de ativos</h2>
+          <h2 className="card-titulo">Mapa de ativos</h2>
         </SubCard>
         {temMais && (
           <BotaoVer onClick={() => setOpen(o => !o)} open={open} />
         )}
       </div>
-      <SubCard>
+      <SubCard style={{ overflow: "hidden" }}>
         <div className="heatmap-grid">
           {df.slice(0, LIMITE).map((at, i) => <HeatmapCell key={i} ativo={at} onSelectTicker={onSelectTicker} />)}
         </div>
@@ -2310,6 +2408,12 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
                 {String(ativo.ticker).toUpperCase()}
               </div>
               <div className="ativo-nome-texto">{ativo.nome}</div>
+              <div className="ativo-posicao-classe" title={`${pat.toFixed(1)}% da classe`}>
+                <div className="alocacao-mini-barra ativo-posicao-classe-barra">
+                  <div className="alocacao-mini-barra-fill" style={{ width: `${Math.max(Math.min(pat, 100), 0)}%`, background: "var(--accent)" }} />
+                </div>
+                <span className="ativo-posicao-classe-pct">{pat.toFixed(1)}%</span>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
               {onEditar && (
@@ -2432,7 +2536,7 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
       <div className="card-header">
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
           <h2 className="card-titulo">
-            <IconeCard nome={ICONE_POR_SUFIXO[sufixo]} />{titulo}
+            {titulo}
             <span className="card-titulo-contador">{df.length}</span>
           </h2>
         </SubCard>
@@ -2570,7 +2674,7 @@ function CardResumoCotacoes({ ativos }) {
   return (
     <Card>
       <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-        <h2 className="card-titulo"><IconeCard nome="cotacoes" />Cotações</h2>
+        <h2 className="card-titulo">Cotações</h2>
       </SubCard>
 
       <SubCard>
@@ -2632,7 +2736,7 @@ function LinhaCotacao({ ativo, highlight }) {
 
   return (
     <div
-      className="list-row list-row-plain list-row-clickable"
+      className="list-row list-row-plain list-row-clickable sem-zoom"
       id={`cotacao-${ativo.ticker}`}
       onClick={abrirNoGoogleFinance}
       title={`Ver ${String(ativo.ticker).toUpperCase()} no Google Finance`}
@@ -2739,7 +2843,7 @@ function CardCotacoesClasse({ titulo, sufixo, classe, ativos, selectedTicker, se
       <div className="card-header">
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
           <h2 className="card-titulo">
-            <IconeCard nome={ICONE_POR_SUFIXO[sufixo]} />{titulo}
+            {titulo}
             <span className="card-titulo-contador">{df.length}</span>
           </h2>
         </SubCard>
@@ -2804,7 +2908,7 @@ function CardFinancasResumo({ totais, meta, gasto }) {
   return (
     <Card>
       <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-        <h2 className="card-titulo"><IconeCard nome="financas" />Finanças</h2>
+        <h2 className="card-titulo">Finanças</h2>
       </SubCard>
 
       <SubCard>
@@ -2876,7 +2980,7 @@ function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="seta-cima" />Receitas</h2>
+          <h2 className="card-titulo">Receitas</h2>
         </SubCard>
         <button className="btn-tema" onClick={() => onAdicionar("income")} aria-label="Adicionar receita" title="Adicionar receita">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2895,7 +2999,7 @@ function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
             {receitas.map(tx => (
               <div
                 key={tx.id}
-                className="list-row list-row-plain list-row-clickable"
+                className="list-row list-row-plain list-row-clickable sem-zoom"
                 onClick={() => onEditar(tx)}
                 title={`Editar ${sentenceCase(tx.name)}`}
               >
@@ -2923,7 +3027,7 @@ function CardFinancasMeta({ lancamentos, onEditarLancamento, onAdicionar }) {
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="seta-baixo" />Despesas</h2>
+          <h2 className="card-titulo">Despesas</h2>
         </SubCard>
         <button className="btn-tema" onClick={() => onAdicionar("expense")} aria-label="Adicionar despesa" title="Adicionar despesa">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2942,7 +3046,7 @@ function CardFinancasMeta({ lancamentos, onEditarLancamento, onAdicionar }) {
             {despesas.map(tx => (
               <div
                 key={tx.id}
-                className="list-row list-row-plain list-row-clickable"
+                className="list-row list-row-plain list-row-clickable sem-zoom"
                 onClick={() => onEditarLancamento(tx)}
                 title={`Editar ${sentenceCase(tx.name)}`}
               >
@@ -3410,7 +3514,7 @@ function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarR
       <div id="sec-configuracoes-editar">
       <Card>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="valores" />Valores</h2>
+          <h2 className="card-titulo">Valores</h2>
         </SubCard>
 
         <SubCard>
@@ -3429,7 +3533,7 @@ function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarR
       <div id="sec-configuracoes-aparencia">
       <Card>
         <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo"><IconeCard nome="aparencia" />Aparência</h2>
+          <h2 className="card-titulo">Aparência</h2>
         </SubCard>
 
         <SubCard>
@@ -3849,9 +3953,9 @@ export default function App() {
               <div id="sec-reserva"><CardReserva reservas={reservas} alocacao={alocacao} totais={totais} /></div>
               <div id="sec-alocacao"><CardAlocacao alocacao={alocacao} /></div>
               <div id="sec-rentabilidade"><CardRentabilidade rentabilidade={dadosLocais.rentabilidade} onEditarRentabilidade={abrirEdicaoRentabilidade} /></div>
+              <div id="sec-proventos"><CardProventos proventos={dadosLocais.proventos} /></div>
               <div id="sec-brasil-exterior"><CardBrasilExterior alocacao={alocacao} totais={totais} /></div>
               <div id="sec-aporte"><CardAporte ativos={ativos} alocacao={alocacao} /></div>
-              <div id="sec-proventos"><CardProventos proventos={dadosLocais.proventos} /></div>
               <div id="sec-heatmap">
                 <CardHeatmap
                   ativos={ativos}
@@ -4712,6 +4816,9 @@ function Style() {
         border-color: rgba(255,255,255,0.09);
         transform: scale(1.015);
       }
+      .list-row-clickable.sem-zoom:hover {
+        transform: none;
+      }
       :root[data-theme="light"] .list-row-clickable:hover {
         background: rgba(9, 30, 27, 0.035);
         border-color: rgba(9, 30, 27, 0.08);
@@ -4918,7 +5025,7 @@ function Style() {
         transition: filter 0.2s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
         min-height: 90px;
       }
-      .heatmap-cell:hover { filter: brightness(1.15); transform: scale(1.03); }
+      .heatmap-cell:hover { filter: brightness(1.15); }
       .hm-ticker { color: #f5f5f7; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
       .hm-pct    { color: #f5f5f7; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
       .hm-brl    { color: rgba(255,255,255,0.8); font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -5211,6 +5318,33 @@ function Style() {
         opacity: 0.45;
         transform: translateX(-1px);
       }
+      .ativo-nome-ticker-linha {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-width: 0;
+      }
+      .ativo-posicao-classe {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        width: 100%;
+        max-width: 180px;
+        margin-top: 6px;
+      }
+      .ativo-posicao-classe-barra {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
+        height: 4px;
+      }
+      .ativo-posicao-classe-pct {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--color-label);
+        flex-shrink: 0;
+      }
       .btn-remover-linha {
         background: rgba(138,53,53,0.12);
         border: 1px solid rgba(138,53,53,0.3);
@@ -5365,6 +5499,7 @@ function Style() {
         .filtros-row { gap: var(--space-3); }
 
                 .logo-ativo-principal { width: 52px !important; height: 52px !important; }
+        .ativo-posicao-classe { max-width: 110px; }
         .chart-tooltip { padding: var(--space-2) 10px; font-size: 11px; }
         .tooltip-val   { font-size: 13px; }
         .tooltip-sub   { font-size: 11px; }
@@ -5393,6 +5528,9 @@ function Style() {
         .chart-tooltip { padding: 6px var(--space-2); font-size: 10px; }
         .tooltip-val   { font-size: 12px; }
         .tooltip-sub   { font-size: 10px; }
+        .ativo-posicao-classe { max-width: 88px; margin-top: 4px; }
+        .ativo-posicao-classe-barra { height: 3px; }
+        .ativo-posicao-classe-pct { font-size: 10px; }
       }
 
             @media (max-width: 340px) {
