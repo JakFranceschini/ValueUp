@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
-import { XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
+import { XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine } from "recharts";
 import { initializeApp } from "@firebase/app";
 import { getDatabase, ref, get, set } from "@firebase/database";
 import ativosPadrao from "./data/ativos.json";
@@ -38,6 +38,7 @@ function dadosLocaisPadrao() {
     proventos: [...proventosPadrao],
 
     evolucao: [...evolucaoPadrao],
+    rentabilidade: [],
   };
 }
 
@@ -102,6 +103,25 @@ function parseBRLInput(formatado) {
   return isNaN(n) ? 0 : n;
 }
 
+function formatarBRLInputSigned(raw) {
+  const str = String(raw ?? "");
+  const negativo = str.includes("-");
+  const digitos = str.replace(/\D/g, "");
+  if (!digitos) return negativo ? "-" : "";
+  const centavos = parseInt(digitos, 10);
+  const formatado = (centavos / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return negativo ? `-${formatado}` : formatado;
+}
+
+function parseBRLInputSigned(formatado) {
+  const s = String(formatado ?? "").trim();
+  if (!s || s === "-") return 0;
+  const negativo = s.startsWith("-");
+  const n = parseFloat(s.replace(/^-/, "").replace(/\./g, "").replace(",", "."));
+  if (isNaN(n)) return 0;
+  return negativo ? -n : n;
+}
+
 function formatarUSDInput(raw) {
   const digitos = String(raw ?? "").replace(/\D/g, "");
   if (!digitos) return "";
@@ -155,6 +175,19 @@ function corHeatmap(pct) {
   if (pct >= -20) return "#c0504a";
   if (pct >= -50) return "#8a3535";
   return "#4f1f1f";
+}
+
+function calcularRentabilidadeComDiferenca(rentabilidadeBase) {
+  const linhas = (rentabilidadeBase ?? [])
+    .map(r => ({ ano: String(r.ano ?? "").trim(), valor: toFloat(r.valor) }))
+    .filter(r => r.ano)
+    .sort((a, b) => parseInt(a.ano, 10) - parseInt(b.ano, 10));
+
+  return linhas.map((r, i) => ({
+    ano: r.ano,
+    valor: r.valor,
+    diferenca: i === 0 ? null : r.valor - linhas[i - 1].valor,
+  }));
 }
 
 function calcularEvolucaoComDiferenca(evolucaoBase, totalPatrimonioAtual) {
@@ -224,12 +257,14 @@ function normalizarDadosLocais(salvoBruto) {
   const proventos = proventosSalvos.length > 0 ? proventosSalvos : [...proventosPadrao];
   const evolucaoSalva = salvo.evolucao ?? [];
   const evolucao = evolucaoSalva.length > 0 ? evolucaoSalva : [...evolucaoPadrao];
+  const rentabilidade = salvo.rentabilidade ?? [];
   return {
     ...dadosLocaisPadrao(),
     ...salvo,
     ativos,
     proventos,
     evolucao,
+    rentabilidade,
     metas: { ...dadosLocaisPadrao().metas, ...(salvo.metas ?? {}) },
   };
 }
@@ -1504,6 +1539,89 @@ function EvolucaoXTick({ x, y, payload }) {
   );
 }
 
+function CustomTooltipRentabilidade({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const valor = payload[0].value;
+  return (
+    <div className="chart-tooltip" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif' }}>
+      <div className="tooltip-label">{label}</div>
+      <div className="tooltip-val" style={{ color: corVar(valor) }}>{sinal(valor)}{valor.toFixed(2)}%</div>
+    </div>
+  );
+}
+
+function CardRentabilidade({ rentabilidade, onEditarRentabilidade }) {
+  const dataRentBruta = calcularRentabilidadeComDiferenca(rentabilidade);
+  const temRentabilidade = dataRentBruta.length > 0;
+  const anosNumRent = dataRentBruta.map(d => parseInt(d.ano, 10)).filter(n => !isNaN(n));
+  const anoAtualNum = new Date().getFullYear();
+  const [anoInicioRent, setAnoInicioRent] = useState(anoAtualNum - (ANOS_PADRAO_HISTORICO - 1));
+
+  const dataRent = dataRentBruta
+    .filter(d => parseInt(d.ano, 10) >= anoInicioRent)
+    .map(d => ({ ano: d.ano, valor: d.valor, diff: d.diferenca }));
+
+  const ultimo = dataRentBruta[dataRentBruta.length - 1];
+  const media = temRentabilidade
+    ? dataRentBruta.reduce((acc, d) => acc + d.valor, 0) / dataRentBruta.length
+    : 0;
+
+  const acumulada = dataRent.length > 0
+    ? (dataRent.reduce((acc, d) => acc * (1 + d.valor / 100), 1) - 1) * 100
+    : 0;
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
+        <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
+          <h2 className="card-titulo"><IconeCard nome="investimentos" />Rentabilidade</h2>
+        </SubCard>
+      </div>
+
+      {temRentabilidade ? (
+        <>
+          <SubCard style={{ overflow: "hidden" }}>
+            <HeroValor
+              titulo={`Rentabilidade acumulada desde ${anoInicioRent}`}
+              valor={`${sinal(acumulada)}${acumulada.toFixed(2)}%`}
+              cor="var(--color-mono)"
+              visible={dataRent.length > 0}
+            />
+            <div className="card-header" style={{ margin: "var(--space-2) 0" }}>
+              <SeletorAno anos={anosNumRent} anoInicio={anoInicioRent} onChange={setAnoInicioRent} />
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={dataRent} margin={{ top: 12, right: 12, left: 12, bottom: 4 }}>
+                <defs>
+                  <linearGradient id="gradRent" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={COR_ALTA} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={COR_ALTA} stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="ano" tick={<EvolucaoXTick />} axisLine={false} tickLine={false} interval={0} />
+                <YAxis hide />
+                <ReferenceLine y={0} stroke="var(--border2)" strokeDasharray="3 3" />
+                <Tooltip content={<CustomTooltipRentabilidade />} />
+                <Area type="monotone" dataKey="valor" stroke={COR_ALTA} strokeWidth={2.5}
+                  fill="url(#gradRent)" dot={{ fill: COR_ALTA, r: 4 }}
+                  activeDot={{ r: 6, fill: COR_ALTA }}
+                />
+                <Area type="monotone" dataKey="diff" stroke="none" fill="none" dot={false} activeDot={false} legendType="none" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </SubCard>
+        </>
+      ) : (
+        <SubCard>
+          <div className="lista-anos-vazio" style={{ marginTop: "calc(var(--space-4) * -1)" }}>
+            Nenhuma rentabilidade cadastrada ainda. Adicione em Configurações.
+          </div>
+        </SubCard>
+      )}
+    </Card>
+  );
+}
+
 function CardReserva({ reservas, alocacao, totais, onEditar }) {
   if (!reservas?.length || !alocacao?.length) return null;
   const r = reservas[0], a = alocacao[0];
@@ -1628,33 +1746,35 @@ function BarraAlocacao({ dados }) {
         {dados.map((d, i) => {
           const cor = PALETA_ALOCACAO[i % PALETA_ALOCACAO.length];
           return (
-            <div key={d.titulo} className="alocacao-item">
-              <ListRow
-                label={
-                  <span style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: cor, flexShrink: 0 }} />
-                      {d.titulo}
+            <div key={d.titulo} className="list-row list-row-plain alocacao-item-compacta">
+              <div className="list-row-left">
+                <span className="alocacao-dot" style={{ background: cor }} />
+                <span className="alocacao-label-col">
+                  <span className="list-row-label">{d.titulo}</span>
+                  {d.ideal > 0 && (
+                    <span className="list-row-tag alocacao-meta-tag">Meta {d.ideal.toFixed(1)}%</span>
+                  )}
+                </span>
+              </div>
+              <div className="list-row-right">
+                <div className="list-row-values">
+                  <span className="list-row-value">{d.pct.toFixed(1)}%</span>
+                  {d.diff != null && (
+                    <span className="list-row-sub" style={{ color: corVar(d.diff) }}>
+                      {sinal(d.diff)}{d.diff.toFixed(2)}%
                     </span>
-                    {d.ideal > 0 && (
-                      <span className="list-row-tag">Meta {d.ideal.toFixed(1)}%</span>
-                    )}
-                  </span>
-                }
-                value={`${d.pct.toFixed(1)}%`}
-                sub={d.diff != null ? `${sinal(d.diff)}${d.diff.toFixed(2)}%` : undefined}
-                subColor={corVar(d.diff)}
-                plain
-              />
-              <div className="alocacao-mini-barra">
-                <div className="alocacao-mini-barra-fill" style={{ width: `${Math.max(Math.min(d.pct, 100), 0)}%`, background: cor }} />
-                {d.ideal > 0 && (
-                  <div
-                    className="alocacao-meta-marcador"
-                    title={`Meta ${d.ideal.toFixed(1)}%`}
-                    style={{ left: `${Math.max(Math.min(d.ideal, 100), 0)}%` }}
-                  />
-                )}
+                  )}
+                </div>
+                <div className="alocacao-mini-barra">
+                  <div className="alocacao-mini-barra-fill" style={{ width: `${Math.max(Math.min(d.pct, 100), 0)}%`, background: cor }} />
+                  {d.ideal > 0 && (
+                    <div
+                      className="alocacao-meta-marcador"
+                      title={`Meta ${d.ideal.toFixed(1)}%`}
+                      style={{ left: `${Math.max(Math.min(d.ideal, 100), 0)}%` }}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -3101,7 +3221,7 @@ function ModalListaAnos({ titulo, campos, linhas, onChange, onSalvar, onFechar, 
                     inputMode="decimal"
                     placeholder="0,00"
                     value={linha[c.key] ?? ""}
-                    onChange={e => atualizarLinha(i, c.key, formatarBRLInput(e.target.value))}
+                    onChange={e => atualizarLinha(i, c.key, c.signed ? formatarBRLInputSigned(e.target.value) : formatarBRLInput(e.target.value))}
                   />
                 </div>
               ))}
@@ -3284,7 +3404,7 @@ function LinhaConfig({ label, onClick }) {
   );
 }
 
-function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarReserva, onEditarAlocacao, onEditarProventos, onEditarMetaDespesa }) {
+function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarRentabilidade, onEditarReserva, onEditarAlocacao, onEditarProventos, onEditarMetaDespesa }) {
   return (
     <>
       <div id="sec-configuracoes-editar">
@@ -3296,6 +3416,7 @@ function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarR
         <SubCard>
           <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
             <LinhaConfig label="Editar evolução do patrimônio" onClick={onEditarEvolucao} />
+            <LinhaConfig label="Editar rentabilidade" onClick={onEditarRentabilidade} />
             <LinhaConfig label="Editar reserva" onClick={onEditarReserva} />
             <LinhaConfig label="Editar alocação" onClick={onEditarAlocacao} />
             <LinhaConfig label="Editar proventos" onClick={onEditarProventos} />
@@ -3388,6 +3509,9 @@ export default function App() {
 
   const [evolucaoModalAberto, setEvolucaoModalAberto] = useState(false);
   const [formEvolucao, setFormEvolucao]                 = useState([]);
+
+  const [rentabilidadeModalAberto, setRentabilidadeModalAberto] = useState(false);
+  const [formRentabilidade, setFormRentabilidade]                 = useState([]);
 
   const [metaModalAberto, setMetaModalAberto] = useState(false);
   const [metaInput, setMetaInput]               = useState("");
@@ -3631,6 +3755,24 @@ export default function App() {
     setEvolucaoModalAberto(false);
   }
 
+  function abrirEdicaoRentabilidade() {
+    setFormRentabilidade(
+      (dadosLocais.rentabilidade ?? [])
+        .map(r => ({ ano: String(r.ano ?? ""), valor: formatarBRLInputSigned(String(Math.round(toFloat(r.valor) * 100))) }))
+    );
+    setRentabilidadeModalAberto(true);
+  }
+
+  function salvarRentabilidade() {
+    const rentabilidade = formRentabilidade
+      .map(r => ({ ano: String(r.ano ?? "").trim(), valor: parseBRLInputSigned(r.valor) }))
+      .filter(r => r.ano)
+      .sort((a, b) => parseInt(a.ano, 10) - parseInt(b.ano, 10));
+
+    setDadosLocais(prev => ({ ...prev, rentabilidade }));
+    setRentabilidadeModalAberto(false);
+  }
+
   function abrirEdicaoMetaDespesa() {
     setMetaInput(numParaBRLInput(metaDespesa));
     setMetaModalAberto(true);
@@ -3706,6 +3848,7 @@ export default function App() {
               <div id="sec-resumo-investimentos"><CardResumoInvestimentos totais={totais} /></div>
               <div id="sec-reserva"><CardReserva reservas={reservas} alocacao={alocacao} totais={totais} /></div>
               <div id="sec-alocacao"><CardAlocacao alocacao={alocacao} /></div>
+              <div id="sec-rentabilidade"><CardRentabilidade rentabilidade={dadosLocais.rentabilidade} onEditarRentabilidade={abrirEdicaoRentabilidade} /></div>
               <div id="sec-brasil-exterior"><CardBrasilExterior alocacao={alocacao} totais={totais} /></div>
               <div id="sec-aporte"><CardAporte ativos={ativos} alocacao={alocacao} /></div>
               <div id="sec-proventos"><CardProventos proventos={dadosLocais.proventos} /></div>
@@ -3773,6 +3916,7 @@ export default function App() {
               tema={tema}
               onAlternarTema={alternarTema}
               onEditarEvolucao={abrirEdicaoEvolucao}
+              onEditarRentabilidade={abrirEdicaoRentabilidade}
               onEditarReserva={abrirEdicaoReserva}
               onEditarAlocacao={abrirEdicaoMetas}
               onEditarProventos={abrirEdicaoProventos}
@@ -3844,6 +3988,20 @@ export default function App() {
         />
       )}
 
+      {rentabilidadeModalAberto && (
+        <ModalListaAnos
+          titulo="Editar rentabilidade"
+          campos={[
+            { key: "valor", label: "Rentabilidade no ano (%)", signed: true },
+          ]}
+          linhas={formRentabilidade}
+          onChange={setFormRentabilidade}
+          onSalvar={salvarRentabilidade}
+          onFechar={() => setRentabilidadeModalAberto(false)}
+          className="modal-evolucao"
+        />
+      )}
+
       {metaModalAberto && (
         <ModalMeta
           valor={metaInput}
@@ -3885,6 +4043,7 @@ function Style() {
         --color-label:    #8d908f;
         --color-value:    #f3f2ee;
         --color-neutral:  #f3f2ee;
+        --color-mono:     #ffffff;
         --navbar-bg:      rgba(26, 28, 29, 0.55);
         --navbar-border:  rgba(255, 255, 255, 0.07);
         --spinner-track:  rgba(10, 85, 80, 0.2);
@@ -3929,6 +4088,7 @@ function Style() {
         --color-label:    #626c69;
         --color-value:    #0d1a18;
         --color-neutral:  #0d1a18;
+        --color-mono:     #000000;
         --navbar-bg:      rgba(255, 255, 255, 0.68);
         --navbar-border:  rgba(9, 30, 27, 0.08);
         --spinner-track:  rgba(10, 85, 80, 0.15);
@@ -4271,6 +4431,11 @@ function Style() {
       :root[data-theme="light"] .navbar-menu-overlay-item { background: rgba(9, 30, 27, 0.035); }
       :root[data-theme="light"] .navbar-menu-overlay-item:hover { background: rgba(9, 30, 27, 0.06); }
       .navbar-menu-overlay-item.is-ativo {
+        background: var(--accent);
+        border-color: transparent;
+        color: #f5f5f7;
+      }
+      :root[data-theme="light"] .navbar-menu-overlay-item.is-ativo {
         background: var(--accent);
         border-color: transparent;
         color: #f5f5f7;
@@ -4985,24 +5150,47 @@ function Style() {
         flex: 1;
         min-width: 0;
       }
-      .alocacao-item {
+      .alocacao-item-compacta {
         position: relative;
-        padding-bottom: var(--space-2);
-        border-radius: var(--radius-md);
       }
-      .alocacao-item:not(:last-child) {
-        margin-bottom: 0;
+      .alocacao-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: inline-block;
       }
-      .alocacao-item:last-child {
-        padding-bottom: 18px;
+      .alocacao-meta-tag {
+        white-space: nowrap;
+        flex-shrink: 0;
       }
-      .alocacao-item .list-row::after { display: none; }
-      .alocacao-item .list-row { padding-bottom: var(--space-1); }
+      .alocacao-item-compacta .list-row-right {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: var(--space-1);
+      }
+      .alocacao-item-compacta .list-row-values {
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: space-between;
+        width: 240px;
+        gap: var(--space-2);
+      }
+      .alocacao-item-compacta .list-row-sub {
+        text-align: left;
+      }
+      .alocacao-label-col {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
       .alocacao-mini-barra {
         position: relative;
         display: block;
-        width: 100%;
-        height: 7px;
+        width: 240px;
+        flex-shrink: 0;
+        height: 6px;
         border-radius: var(--radius-pill);
         background: var(--bar-track);
         overflow: hidden;
@@ -5017,7 +5205,7 @@ function Style() {
         position: absolute;
         top: -2.5px;
         width: 2px;
-        height: 12px;
+        height: 11px;
         border-radius: 1px;
         background: var(--text);
         opacity: 0.45;
@@ -5144,6 +5332,10 @@ function Style() {
 
             @media (max-width: 640px) {
         .main { padding: 96px var(--space-3) 40px; gap: var(--space-4); }
+
+                .alocacao-mini-barra { width: 130px; }
+        .alocacao-item-compacta .list-row-values { width: 130px; }
+        .alocacao-item-compacta .list-row-left { min-width: 0; }
 
                 .navbar {
           transform: translateX(-50%);
