@@ -890,6 +890,11 @@ function Expandable({ open, children }) {
         height: 0,
         overflow: "hidden",
         opacity: 0,
+        // respiro lateral p/ sombras/glow dos botões não serem cortados pelo overflow:hidden
+        paddingLeft: 12,
+        paddingRight: 12,
+        marginLeft: -12,
+        marginRight: -12,
         willChange: "height, opacity, margin",
       }}
     >
@@ -1944,14 +1949,22 @@ function CardBrasilExterior({ alocacao, totais }) {
       </SubCard>
 
       <SubCard>
-        <div style={{ display: "flex", width: "100%", height: 8, borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
-          {dados.filter(d => d.pct > 0).map(d => (
+        <div style={{ position: "relative", width: "100%", height: 8 }}>
+          <div style={{ display: "flex", width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
+            {dados.filter(d => d.pct > 0).map(d => (
+              <div
+                key={d.titulo}
+                style={{ width: `${d.pct}%`, background: d.cor, transition: "width 0.3s ease" }}
+                title={`${d.titulo}: ${d.pct.toFixed(1)}%`}
+              />
+            ))}
+          </div>
+          {pctBrasil > 0 && pctExterior > 0 && (
             <div
-              key={d.titulo}
-              style={{ width: `${d.pct}%`, background: d.cor, transition: "width 0.3s ease" }}
-              title={`${d.titulo}: ${d.pct.toFixed(1)}%`}
+              className="alocacao-meta-marcador"
+              style={{ top: -1.5, left: `${Math.min(Math.max(pctBrasil, 0), 100)}%`, transition: "left 0.3s ease" }}
             />
-          ))}
+          )}
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>
@@ -4989,7 +5002,9 @@ function Style() {
         display: flex;
         gap: var(--space-2);
         flex-wrap: wrap;
-        padding-top: var(--space-1);
+        padding-top: 6px;
+        padding-bottom: 14px;
+        margin-bottom: -10px;
       }
       .filtros-row .btn-filtro-simples {
         padding-left: 18px;
