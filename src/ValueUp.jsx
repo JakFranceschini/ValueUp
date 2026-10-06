@@ -382,8 +382,12 @@ function montarAtivos(ativosPlanilha, dadosLocais) {
     const preco_medio = toFloat(extra.preco_medio);
     const classe = String(extra.classe || "").toLowerCase().trim();
 
-    const taxa = CLASSES_EM_DOLAR.includes(classe) ? taxaDolar : 1;
-    const total_investido = quantidade * preco_medio * taxa;
+    const ehDolar = CLASSES_EM_DOLAR.includes(classe);
+    const taxa = ehDolar ? taxaDolar : 1;
+    const dolar_compra = ehDolar ? toFloat(extra.dolar_compra) : 0;
+    // Aportado usa o dólar médio da compra (fixo). Se não informado, cai no dólar atual (comportamento antigo).
+    const taxaCompra = ehDolar ? (dolar_compra > 0 ? dolar_compra : taxaDolar) : 1;
+    const total_investido = quantidade * preco_medio * taxaCompra;
     const total_atual = quantidade * cotacao * taxa;
     const total_atual_ontem = quantidade * cotacao_ontem * taxa;
     const variacao_total = total_atual - total_investido;
@@ -402,6 +406,7 @@ function montarAtivos(ativosPlanilha, dadosLocais) {
       classe,
       quantidade,
       preco_medio,
+      dolar_compra,
       porcentagem_meta: toFloat(extra.porcentagem_meta),
       total_investido,
       total_atual,
@@ -3249,6 +3254,20 @@ function ModalAtivo({ ticker, form, onChange, onSalvar, onLimpar, temDados, onFe
         />
       </div>
 
+      {precoEmDolar && (
+        <div className="form-grupo">
+          <label className="campo-titulo">Dólar médio na compra (R$)</label>
+          <input
+            className="form-input"
+            type="text"
+            inputMode="numeric"
+            placeholder="0,00"
+            value={form.dolar_compra ?? ""}
+            onChange={e => onChange({ ...form, dolar_compra: formatarBRLInput(e.target.value) })}
+          />
+        </div>
+      )}
+
       <div className="form-grupo">
         <label className="campo-titulo">% Meta (dentro da classe)</label>
         <input
@@ -3613,7 +3632,7 @@ export default function App() {
   const nuvemOkRef = useRef(false);
 
   const [ativoEditando, setAtivoEditando] = useState(null);
-  const [formAtivo, setFormAtivo]         = useState({ ticker: "", nome: "", classe: "", quantidade: "", preco_medio: "", porcentagem_meta: "", cotacao: "" });
+  const [formAtivo, setFormAtivo]         = useState({ ticker: "", nome: "", classe: "", quantidade: "", preco_medio: "", dolar_compra: "", porcentagem_meta: "", cotacao: "" });
 
   const [reservaModalAberto, setReservaModalAberto] = useState(false);
   const [formReserva, setFormReserva]                 = useState("");
@@ -3744,6 +3763,7 @@ export default function App() {
       classe: extra.classe ?? "",
       quantidade: numParaTexto(extra.quantidade),
       preco_medio: numParaMoedaInput(extra.preco_medio, extra.classe),
+      dolar_compra: numParaBRLInput(extra.dolar_compra),
       porcentagem_meta: numParaTexto(extra.porcentagem_meta),
       cotacao: numParaTexto(extra.cotacao),
     });
@@ -3757,6 +3777,7 @@ export default function App() {
       classe: classePreSelecionada ?? "",
       quantidade: "",
       preco_medio: "",
+      dolar_compra: "",
       porcentagem_meta: "",
       cotacao: "",
     });
@@ -3785,6 +3806,7 @@ export default function App() {
         classe: formAtivo.classe,
         quantidade: toFloat(formAtivo.quantidade),
         preco_medio: parseMoedaInput(formAtivo.preco_medio, formAtivo.classe),
+        dolar_compra: ehClasseEmDolar(formAtivo.classe) ? parseBRLInput(formAtivo.dolar_compra) : 0,
         porcentagem_meta: toFloat(formAtivo.porcentagem_meta),
         cotacao: toFloat(formAtivo.cotacao),
       };
