@@ -59,7 +59,6 @@ const ALOCACAO_CLASSES = [
 const PAGINAS = [
   { id: "patrimonio",     titulo: "Patrimônio"    },
   { id: "investimentos",  titulo: "Investimentos" },
-  { id: "cotacoes",       titulo: "Cotações"      },
   { id: "financas",       titulo: "Finanças"       },
 ];
 
@@ -365,18 +364,16 @@ function montarAtivos(ativosPlanilha, dadosLocais) {
       .map(row => ({
         ticker: String(row.ticker ?? "").trim(),
         cotacao: toFloat(row.cotacao),
-        cotacao_ontem: toFloat(row.cotacao_ontem),
       })),
     ...Object.keys(dadosLocais.ativos ?? {})
       .filter(ticker => !tickersDaPlanilha.has(String(ticker).toLowerCase()))
       .map(ticker => ({
         ticker: String(ticker).trim(),
         cotacao: toFloat(dadosLocais.ativos[ticker]?.cotacao),
-        cotacao_ontem: toFloat(dadosLocais.ativos[ticker]?.cotacao),
       })),
   ];
 
-  const semPercentuais = linhas.map(({ ticker, cotacao, cotacao_ontem }) => {
+  const semPercentuais = linhas.map(({ ticker, cotacao }) => {
     const extra = buscarExtraAtivo(dadosLocais.ativos, ticker);
     const quantidade = toFloat(extra.quantidade);
     const preco_medio = toFloat(extra.preco_medio);
@@ -389,19 +386,13 @@ function montarAtivos(ativosPlanilha, dadosLocais) {
     const taxaCompra = ehDolar ? (dolar_compra > 0 ? dolar_compra : taxaDolar) : 1;
     const total_investido = quantidade * preco_medio * taxaCompra;
     const total_atual = quantidade * cotacao * taxa;
-    const total_atual_ontem = quantidade * cotacao_ontem * taxa;
     const variacao_total = total_atual - total_investido;
     const variacao_percentual = total_investido > 0 ? (variacao_total / total_investido) * 100 : 0;
 
-    const variacao_dia = total_atual - total_atual_ontem;
-    const variacao_dia_percentual = total_atual_ontem > 0 ? (variacao_dia / total_atual_ontem) * 100 : 0;
-    const variacao_cotacao = cotacao - cotacao_ontem;
-    const variacao_cotacao_percentual = cotacao_ontem > 0 ? (variacao_cotacao / cotacao_ontem) * 100 : 0;
 
     return {
       ticker,
       cotacao,
-      cotacao_ontem,
       nome: extra.nome || ticker,
       classe,
       quantidade,
@@ -410,13 +401,8 @@ function montarAtivos(ativosPlanilha, dadosLocais) {
       porcentagem_meta: toFloat(extra.porcentagem_meta),
       total_investido,
       total_atual,
-      total_atual_ontem,
       variacao_total,
       variacao_percentual,
-      variacao_dia,
-      variacao_dia_percentual,
-      variacao_cotacao,
-      variacao_cotacao_percentual,
     };
   });
 
@@ -437,25 +423,19 @@ function calcularTotais(ativos, reservaAtual, taxaDolar) {
   const t = {};
   let totalInvestimentos = 0;
   let aportadoInvestimentos = 0;
-  let totalInvestimentosOntem = 0;
 
   CLASSES_ATIVOS.forEach(({ classe, sufixo }) => {
     const doClasse = ativos.filter(a => a.classe === classe);
     const total      = doClasse.reduce((s, a) => s + a.total_atual, 0);
-    const totalOntem = doClasse.reduce((s, a) => s + a.total_atual_ontem, 0);
     const aportado   = doClasse.reduce((s, a) => s + a.total_investido, 0);
     t[`total_${sufixo}`]          = total;
-    t[`total_ontem_${sufixo}`]    = totalOntem;
     t[`total_aportado_${sufixo}`] = aportado;
     t[`diferenca_${sufixo}`]      = total - aportado;
-    t[`diferenca_dia_${sufixo}`]  = total - totalOntem;
     totalInvestimentos      += total;
     aportadoInvestimentos   += aportado;
-    totalInvestimentosOntem += totalOntem;
   });
 
   const totalPatrimonio    = totalInvestimentos + reservaAtual;
-  const totalPatrimonioOntem = totalInvestimentosOntem + reservaAtual;
   const aportadoPatrimonio = aportadoInvestimentos + reservaAtual;
   t.total_patrimonio             = totalPatrimonio;
   t.total_aportado               = aportadoPatrimonio;
@@ -463,12 +443,6 @@ function calcularTotais(ativos, reservaAtual, taxaDolar) {
   t.total_patrimonio_usd         = taxaDolar > 0 ? totalPatrimonio / taxaDolar : 0;
 
   t.total_investimentos          = totalInvestimentos;
-  t.total_investimentos_ontem    = totalInvestimentosOntem;
-  t.diferenca_dia_investimentos  = totalInvestimentos - totalInvestimentosOntem;
-
-  t.total_patrimonio_ontem       = totalPatrimonioOntem;
-  t.diferenca_dia_patrimonio     = totalPatrimonio - totalPatrimonioOntem;
-
   return [t];
 }
 
@@ -624,13 +598,6 @@ function IconeCard({ nome, size = 21 }) {
           <path d="M16 12h4v4h-4a2 2 0 0 1 0-4Z" />
         </svg>
       );
-    case "cotacoes":
-      return (
-        <svg {...p} className="card-titulo-icone">
-          <path d="M3 17l5-5 4 4 8-9" />
-          <path d="M15 7h5v5" />
-        </svg>
-      );
     case "config":
       return (
         <svg {...p} className="card-titulo-icone">
@@ -676,9 +643,9 @@ const ICONE_POR_SUFIXO = {
   stocks: "stock", reits: "reit", etfs: "etf", acoes: "acao", fiis: "fii", bitcoins: "bitcoin",
 };
 
-function SubCard({ children, className = "", style = {}, id }) {
+function SubCard({ children, className = "", style = {}, id, ...rest }) {
   return (
-    <div id={id} className={`subcard ${className}`} style={style}>
+    <div id={id} className={`subcard ${className}`} style={style} {...rest}>
       {children}
     </div>
   );
@@ -1111,7 +1078,7 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
           )}
         </div>
 
-        {(pagina === "investimentos" || pagina === "cotacoes") && (
+        {pagina === "investimentos" && (
         <div style={{ position: "relative" }} ref={searchRef}>
           {isMobile ? (
             <button
@@ -1433,12 +1400,8 @@ function CardPatrimonio({ totais, evolucao, onEditarEvolucao }) {
   const aportado  = toFloat(t.total_aportado);
   const diff      = toFloat(t.total_diferenca_patrimonio);
   const totalUSD  = toFloat(t.total_patrimonio_usd);
-  const totalOntem = toFloat(t.total_patrimonio_ontem);
-  const diffDia     = toFloat(t.diferenca_dia_patrimonio);
-  const diffDiaPct  = totalOntem > 0 ? (diffDia / totalOntem) * 100 : 0;
 
   const corDiff = corVar(diff);
-  const corDiffDia = corVar(diffDia);
 
   const pctVariacao  = aportado > 0 ? Math.abs(diff) / aportado * 100 : 0;
 
@@ -1494,12 +1457,6 @@ function CardPatrimonio({ totais, evolucao, onEditarEvolucao }) {
               label="Variação"
               value={`${sinal(diff)}${fmtBRL(diff)} (${pctVariacao.toFixed(1)}%)`}
               valueColor={corDiff}
-              plain
-            />
-            <ListRow
-              label="Variação do dia"
-              value={`${sinalCompleto(diffDia)}${fmtBRL(Math.abs(diffDia))} (${sinalCompleto(diffDiaPct)}${Math.abs(diffDiaPct).toFixed(2)}%)`}
-              valueColor={corDiffDia}
               plain
             />
           </div>
@@ -1754,12 +1711,8 @@ function CardResumoInvestimentos({ totais }) {
   const total    = CLASSES_ATIVOS.reduce((acc, c) => acc + toFloat(t[`total_${c.sufixo}`]), 0);
   const aportado = CLASSES_ATIVOS.reduce((acc, c) => acc + toFloat(t[`total_aportado_${c.sufixo}`]), 0);
   const diff     = CLASSES_ATIVOS.reduce((acc, c) => acc + toFloat(t[`diferenca_${c.sufixo}`]), 0);
-  const totalOntem = toFloat(t.total_investimentos_ontem);
-  const diffDia     = toFloat(t.diferenca_dia_investimentos);
-  const diffDiaPct  = totalOntem > 0 ? (diffDia / totalOntem) * 100 : 0;
 
   const corDiff = corVar(diff);
-  const corDiffDia = corVar(diffDia);
 
   const pctVariacao = aportado > 0 ? Math.abs(diff) / aportado * 100 : 0;
 
@@ -1787,12 +1740,6 @@ function CardResumoInvestimentos({ totais }) {
               label="Variação"
               value={`${sinal(diff)}${fmtBRL(diff)} (${pctVariacao.toFixed(1)}%)`}
               valueColor={corDiff}
-              plain
-            />
-            <ListRow
-              label="Variação do dia"
-              value={`${sinalCompleto(diffDia)}${fmtBRL(Math.abs(diffDia))} (${sinalCompleto(diffDiaPct)}${Math.abs(diffDiaPct).toFixed(2)}%)`}
-              valueColor={corDiffDia}
               plain
             />
           </div>
@@ -2349,8 +2296,11 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (highlight) setOpen(true);
-  }, [highlight]);
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const ehUSD = ["stock", "reit", "etf"].includes(String(ativo.classe).toLowerCase().trim());
   const cot   = toFloat(ativo.cotacao);
@@ -2360,15 +2310,12 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
   const ta    = toFloat(ativo.total_atual);
   const vt    = toFloat(ativo.variacao_total);
   const vpct  = toFloat(ativo.variacao_percentual);
-  const vd    = toFloat(ativo.variacao_dia);
-  const vdpct = toFloat(ativo.variacao_dia_percentual);
   const pmeta = toFloat(ativo.porcentagem_meta);
   const pat   = toFloat(ativo.porcentagem_atual);
   const psf   = toFloat(ativo.porcentagem_sobrando_faltando);
 
   const textoSF = psf > 0 ? "Sobrando" : psf < 0 ? "Faltando" : "Ok";
   const s   = sinal(vt);
-  const sd  = sinalCompleto(vd);
   const ssf = sinalCompleto(psf);
 
   const metricas = soMeta
@@ -2379,7 +2326,6 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
       ]
     : [
         { titulo: "Cotação",         chave: null,                    valor: ehUSD ? fmtUSD(cot) : fmtBRL(cot), cor: null        },
-        { titulo: "Variação do dia", chave: "variacao_dia",          valor: `${sd}${fmtBRL(Math.abs(vd))} (${sd}${Math.abs(vdpct).toFixed(2)}%)`, cor: corVar(vd) },
         { titulo: "Quantidade",      chave: null,                    valor: String(qtd),                         cor: null        },
         { titulo: "Preço médio",     chave: null,                    valor: ehUSD ? fmtUSD(pm) : fmtBRL(pm),   cor: null        },
         { titulo: "Total investido", chave: null,                    valor: fmtBRL(ti),                          cor: null        },
@@ -2391,10 +2337,22 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
         { titulo: textoSF,           chave: null,                    valor: `${ssf}${Math.abs(psf).toFixed(2)}%`, cor: corVar(psf) },
       ];
 
+  const clicavel = !titulo && !soMeta;
+
   return (
-    <SubCard id={`ativo-${ativo.ticker}`} style={{
+    <>
+    <SubCard id={`ativo-${ativo.ticker}`}
+      className={clicavel ? "ativo-clicavel" : ""}
+      {...(clicavel ? {
+        onClick: () => setOpen(true),
+        onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); } },
+        role: "button",
+        tabIndex: 0,
+        "aria-label": `Ver detalhes de ${String(ativo.ticker).toUpperCase()}`,
+      } : {})}
+      style={{
       overflow: "hidden",
-      transition: "box-shadow 0.4s ease, border-color 0.4s ease",
+      transition: "box-shadow 0.4s ease, border-color 0.4s ease, transform 0.22s cubic-bezier(0.22,1,0.36,1), background 0.22s ease",
       ...(highlight ? {
         boxShadow: "0 0 0 1px #13a097, 0 0 12px rgba(19,160,151,0.2)",
         borderColor: "#13a097",
@@ -2435,25 +2393,15 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
               {onEditar && (
-                <button className="btn-tema btn-tema-subcard" onClick={() => onEditar(ativo)} aria-label="Editar ativo" title="Editar ativo">
+                <button className="btn-tema btn-tema-subcard" onClick={(e) => { e.stopPropagation(); onEditar(ativo); }} aria-label="Editar ativo" title="Editar ativo">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 20h9" />
                     <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
                   </svg>
                 </button>
               )}
-              <BotaoVer onClick={() => setOpen(o => !o)} open={open} />
             </div>
           </div>
-
-          <Expandable open={open}>
-            <div className="divisor" />
-            <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
-              {metricas.map((m) => (
-                <ListRow key={m.titulo} label={m.titulo} value={m.valor} valueColor={m.cor} plain highlight={!!m.chave && m.chave === sortBy} />
-              ))}
-            </div>
-          </Expandable>
         </>
       )}
 
@@ -2465,6 +2413,24 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
         </div>
       )}
     </SubCard>
+    {open && clicavel && (
+      <ModalFinancas titulo="" onFechar={() => setOpen(false)} className="modal-ativo-detalhe">
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", marginTop: "calc(var(--space-4) * -2.5)", marginBottom: "calc(var(--space-4) * -1)" }}>
+          <LogoAtivo ticker={ativo.ticker} size={72} />
+          <div style={{ minWidth: 0 }}>
+            <div className="ativo-nome-ticker">{String(ativo.ticker).toUpperCase()}</div>
+            <div className="ativo-nome-texto">{ativo.nome}</div>
+          </div>
+        </div>
+        <div className="divisor" />
+        <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
+          {metricas.map((m) => (
+            <ListRow key={m.titulo} label={m.titulo} value={m.valor} valueColor={m.cor} plain highlight={!!m.chave && m.chave === sortBy} />
+          ))}
+        </div>
+      </ModalFinancas>
+    )}
+    </>
   );
 }
 
@@ -2531,9 +2497,6 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
   const total    = toFloat(t[`total_${sufixo}`]);
   const aportado = toFloat(t[`total_aportado_${sufixo}`]);
   const diff     = toFloat(t[`diferenca_${sufixo}`]);
-  const totalOntem = toFloat(t[`total_ontem_${sufixo}`]);
-  const diffDia     = toFloat(t[`diferenca_dia_${sufixo}`]);
-  const diffDiaPct  = totalOntem > 0 ? (diffDia / totalOntem) * 100 : 0;
 
   let df = (ativos ?? []).filter(a => String(a.classe).toLowerCase().trim() === classe);
   if (sortBy) {
@@ -2546,7 +2509,6 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
   }
 
   const corDiff = corVar(diff);
-  const corDiffDia = corVar(diffDia);
   const pctVariacao = aportado > 0 ? Math.abs(diff) / aportado * 100 : 0;
 
   return (
@@ -2587,12 +2549,6 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
               label="Variação"
               value={`${sinalCompleto(diff)}${fmtBRL(Math.abs(diff))} (${pctVariacao.toFixed(1)}%)`}
               valueColor={corDiff}
-              plain
-            />
-            <ListRow
-              label="Variação do dia"
-              value={`${sinalCompleto(diffDia)}${fmtBRL(Math.abs(diffDia))} (${sinalCompleto(diffDiaPct)}${Math.abs(diffDiaPct).toFixed(2)}%)`}
-              valueColor={corDiffDia}
               plain
             />
           </div>
@@ -2649,244 +2605,6 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
           <div className="ativos-lista">
             {df.map((at, i) => <CardAtivo key={i} ativo={at} highlight={at.ticker === highlightTicker} sortBy={sortBy} onEditar={onEditarAtivo} />)}
           </div>
-        </div>
-      </Expandable>
-    </Card>
-  );
-}
-
-function CardResumoCotacoes({ ativos }) {
-  if (!ativos?.length) return null;
-
-  const totalHoje  = ativos.reduce((s, a) => s + toFloat(a.total_atual), 0);
-  const totalOntem = ativos.reduce((s, a) => s + toFloat(a.total_atual_ontem), 0);
-  const variacaoDia = totalHoje - totalOntem;
-  const variacaoDiaPercentual = totalOntem > 0 ? (variacaoDia / totalOntem) * 100 : 0;
-
-  const corDiff = corVar(variacaoDia);
-
-  const porClasse = {};
-  ativos.forEach(a => {
-    const classe = String(a.classe ?? "").toLowerCase().trim();
-    if (!porClasse[classe]) porClasse[classe] = { hoje: 0, ontem: 0 };
-    porClasse[classe].hoje  += toFloat(a.total_atual);
-    porClasse[classe].ontem += toFloat(a.total_atual_ontem);
-  });
-
-  let melhorClasse = null, melhorPct = -Infinity;
-  let piorClasse = null, piorPct = Infinity;
-  Object.entries(porClasse).forEach(([classe, v]) => {
-    if (v.ontem > 0) {
-      const pct = ((v.hoje - v.ontem) / v.ontem) * 100;
-      if (pct > melhorPct) { melhorPct = pct; melhorClasse = classe; }
-      if (pct < piorPct)  { piorPct  = pct; piorClasse  = classe; }
-    }
-  });
-
-  const tituloMelhorClasse = CLASSES_ATIVOS.find(c => c.classe === melhorClasse)?.titulo ?? melhorClasse;
-  const temMelhorClasse = melhorClasse != null && Number.isFinite(melhorPct);
-
-  const tituloPiorClasse = CLASSES_ATIVOS.find(c => c.classe === piorClasse)?.titulo ?? piorClasse;
-  const temPiorClasse = piorClasse != null && Number.isFinite(piorPct) && piorClasse !== melhorClasse;
-
-  return (
-    <Card>
-      <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-        <h2 className="card-titulo">Cotações</h2>
-      </SubCard>
-
-      <SubCard>
-        <div className="list-row list-row-plain" style={{ marginTop: "calc(var(--space-4) * -1)" }}>
-          <div className="list-row-left">
-            <span className="list-row-label">Carteira hoje</span>
-          </div>
-          <div className="list-row-right">
-            <span className="list-row-value">{fmtBRL(totalHoje)}</span>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-          <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
-            <ListRow
-              label="Variação no dia"
-              value={`${sinalCompleto(variacaoDia)}${fmtBRL(Math.abs(variacaoDia))} (${sinalCompleto(variacaoDiaPercentual)}${Math.abs(variacaoDiaPercentual).toFixed(2)}%)`}
-              valueColor={corDiff}
-              plain
-            />
-            {temMelhorClasse && (
-              <ListRow
-                label="Melhor classe do dia"
-                value={`${tituloMelhorClasse} (${sinalCompleto(melhorPct)}${Math.abs(melhorPct).toFixed(2)}%)`}
-                valueColor={corVar(melhorPct)}
-                plain
-              />
-            )}
-            {temPiorClasse && (
-              <ListRow
-                label="Pior classe do dia"
-                value={`${tituloPiorClasse} (${sinalCompleto(piorPct)}${Math.abs(piorPct).toFixed(2)}%)`}
-                valueColor={corVar(piorPct)}
-                plain
-              />
-            )}
-          </div>
-        </div>
-      </SubCard>
-    </Card>
-  );
-}
-
-function LinhaCotacao({ ativo, highlight }) {
-  const ehUSD = CLASSES_EM_DOLAR.includes(String(ativo.classe).toLowerCase().trim());
-  const formatar = ehUSD ? fmtUSD : fmtBRL;
-
-  const cotacao      = toFloat(ativo.cotacao);
-  const variacao      = toFloat(ativo.variacao_cotacao);
-  const variacaoPct   = toFloat(ativo.variacao_cotacao_percentual);
-  const cor = corVar(variacao);
-  const s   = sinalCompleto(variacao);
-
-  const link = linkGoogleFinance(ativo.ticker, ativo.classe);
-
-  const abrirNoGoogleFinance = () => {
-    if (link) window.open(link, "_blank", "noopener,noreferrer");
-  };
-
-  return (
-    <div
-      className="list-row list-row-plain list-row-clickable sem-zoom"
-      id={`cotacao-${ativo.ticker}`}
-      onClick={abrirNoGoogleFinance}
-      title={`Ver ${String(ativo.ticker).toUpperCase()} no Google Finance`}
-      style={{
-        transition: "box-shadow 0.4s ease, border-radius 0.4s ease",
-        ...(highlight ? {
-          boxShadow: "0 0 0 1px #13a097, 0 0 12px rgba(19,160,151,0.2)",
-          borderRadius: "var(--radius-md)",
-        } : {}),
-      }}
-    >
-      <div className="list-row-left" style={{ gap: "var(--space-3)" }}>
-        <LogoAtivo ticker={ativo.ticker} size={36} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span className="list-row-label">{String(ativo.ticker).toUpperCase()}</span>
-          <span className="list-row-tag">{ativo.nome}</span>
-        </div>
-      </div>
-      <div className="list-row-right">
-        <div className="list-row-values">
-          <span className="list-row-value">{formatar(cotacao)}</span>
-          <span className="list-row-sub" style={{ color: cor, fontSize: 13, fontWeight: 600 }}>
-            {s}{formatar(Math.abs(variacao))} ({s}{Math.abs(variacaoPct).toFixed(2)}%)
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const FILTROS_COTACAO = [
-  { texto: "Maior alta",          key: "valorizadas"    },
-  { texto: "Maior baixa",         key: "desvalorizadas" },
-];
-
-function variacaoPctAssinada(a) {
-  const v = toFloat(a.variacao_cotacao);
-  const p = Math.abs(toFloat(a.variacao_cotacao_percentual));
-  return v < 0 ? -p : p;
-}
-
-function CardCotacoesClasse({ titulo, sufixo, classe, ativos, selectedTicker, searchVersion, scrollRef }) {
-  const [open, setOpen]   = useState(false);
-  const [ordem, setOrdem] = useState(null);
-  const [highlightTicker, setHighlightTicker] = useState(null);
-
-  const handleOrdem = (key) => setOrdem(o => (o === key ? null : key));
-
-  useEffect(() => {
-    if (!selectedTicker || !searchVersion) return;
-    const pertenceAessa = (ativos ?? []).some(a =>
-      String(a.ticker) === selectedTicker &&
-      String(a.classe).toLowerCase().trim() === classe
-    );
-    if (!pertenceAessa) return;
-
-    const jaAberto = open;
-    setOpen(true);
-    setHighlightTicker(selectedTicker);
-
-    const scrollToAtivo = () => {
-      const el = document.getElementById(`cotacao-${selectedTicker}`);
-      const container = scrollRef?.current;
-      if (el && container) {
-        const containerRect = container.getBoundingClientRect();
-        const elRect        = el.getBoundingClientRect();
-        const offset        = container.scrollTop + elRect.top - containerRect.top - 110;
-        container.scrollTo({ top: offset, behavior: "smooth" });
-      }
-      setTimeout(() => setHighlightTicker(null), 2000);
-    };
-
-    let t;
-    if (jaAberto) {
-      scrollToAtivo();
-    } else {
-      const secEl = document.getElementById(`sec-cotacao-${sufixo}`);
-      const container = scrollRef?.current;
-      if (secEl && container) {
-        const containerRect = container.getBoundingClientRect();
-        const secRect       = secEl.getBoundingClientRect();
-        container.scrollTo({ top: container.scrollTop + secRect.top - containerRect.top - 110, behavior: "smooth" });
-      }
-      t = setTimeout(scrollToAtivo, 550);
-    }
-
-    return () => clearTimeout(t);
-  }, [searchVersion]);
-
-  const df = (ativos ?? [])
-    .filter(a => String(a.classe).toLowerCase().trim() === classe)
-    .sort((a, b) => {
-      if (ordem) {
-        const diff = variacaoPctAssinada(b) - variacaoPctAssinada(a);
-        if (diff !== 0) return ordem === "valorizadas" ? diff : -diff;
-      }
-      return String(a.ticker).localeCompare(String(b.ticker));
-    });
-
-  if (!df.length) return null;
-
-  return (
-    <Card>
-      <div className="card-header">
-        <SubCard className="subcard-titulo" style={{ width: "fit-content" }}>
-          <h2 className="card-titulo">
-            {titulo}
-            <span className="card-titulo-contador">{df.length}</span>
-          </h2>
-        </SubCard>
-        <BotaoVer onClick={() => setOpen(o => !o)} open={open} />
-      </div>
-
-      <Expandable open={open}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-          <div className="filtros-row">
-            {FILTROS_COTACAO.map(f => (
-              <BotaoFiltro
-                key={f.key}
-                ativo={ordem === f.key}
-                onClick={() => handleOrdem(f.key)}
-              >
-                {f.texto}
-              </BotaoFiltro>
-            ))}
-          </div>
-
-          <SubCard>
-            <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
-              {df.map(a => <LinhaCotacao key={a.ticker} ativo={a} highlight={a.ticker === highlightTicker} />)}
-            </div>
-          </SubCard>
         </div>
       </Expandable>
     </Card>
@@ -2991,7 +2709,63 @@ function CardFinancasResumo({ totais, meta, gasto }) {
   );
 }
 
-function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
+function MenuLancamento({ onEditar, onExcluir }) {
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const aberto = !!pos;
+
+  const abrir = (e) => {
+    e.stopPropagation();
+    if (aberto) { setPos(null); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+  };
+
+  useEffect(() => {
+    if (!aberto) return;
+    const fechar = () => setPos(null);
+    const onKey = (e) => e.key === "Escape" && fechar();
+    window.addEventListener("scroll", fechar, true);
+    window.addEventListener("resize", fechar);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", fechar, true);
+      window.removeEventListener("resize", fechar);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [aberto]);
+
+  return (
+    <>
+      <button ref={btnRef} className="btn-mais-opcoes" onClick={abrir} aria-label="Mais opções" aria-haspopup="menu" aria-expanded={aberto}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" />
+        </svg>
+      </button>
+      {aberto && createPortal(
+        <div className="menu-lanc-overlay" onClick={(e) => { e.stopPropagation(); setPos(null); }}>
+          <div className="menu-lanc" role="menu" style={{ top: pos.top, right: pos.right }} onClick={e => e.stopPropagation()}>
+            <button className="menu-lanc-item" role="menuitem" onClick={() => { setPos(null); onEditar(); }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
+              </svg>
+              Editar
+            </button>
+            <button className="menu-lanc-item menu-lanc-item-perigo" role="menuitem" onClick={() => { setPos(null); onExcluir(); }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" />
+              </svg>
+              Excluir
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+function CardFinancasComparativo({ lancamentos, onEditar, onExcluir, onAdicionar }) {
   const receitas = lancamentos.filter(t => t.type === "income");
 
   return (
@@ -3015,12 +2789,7 @@ function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
         <SubCard>
           <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
             {receitas.map(tx => (
-              <div
-                key={tx.id}
-                className="list-row list-row-plain list-row-clickable sem-zoom"
-                onClick={() => onEditar(tx)}
-                title={`Editar ${sentenceCase(tx.name)}`}
-              >
+              <div key={tx.id} className="list-row list-row-plain">
                 <div className="list-row-left">
                   <span className="list-row-label">{sentenceCase(tx.name)}</span>
                 </div>
@@ -3028,6 +2797,7 @@ function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
                   <span className="list-row-value" style={{ color: COR_ALTA }}>
                     +{fmtBRL(tx.value)}
                   </span>
+                  <MenuLancamento onEditar={() => onEditar(tx)} onExcluir={() => onExcluir(tx)} />
                 </div>
               </div>
             ))}
@@ -3038,7 +2808,7 @@ function CardFinancasComparativo({ lancamentos, onEditar, onAdicionar }) {
   );
 }
 
-function CardFinancasMeta({ lancamentos, onEditarLancamento, onAdicionar }) {
+function CardFinancasMeta({ lancamentos, onEditarLancamento, onExcluirLancamento, onAdicionar }) {
   const despesas = lancamentos.filter(t => t.type === "expense");
 
   return (
@@ -3062,12 +2832,7 @@ function CardFinancasMeta({ lancamentos, onEditarLancamento, onAdicionar }) {
         <SubCard>
           <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
             {despesas.map(tx => (
-              <div
-                key={tx.id}
-                className="list-row list-row-plain list-row-clickable sem-zoom"
-                onClick={() => onEditarLancamento(tx)}
-                title={`Editar ${sentenceCase(tx.name)}`}
-              >
+              <div key={tx.id} className="list-row list-row-plain">
                 <div className="list-row-left">
                   <span className="list-row-label">{sentenceCase(tx.name)}</span>
                 </div>
@@ -3075,6 +2840,7 @@ function CardFinancasMeta({ lancamentos, onEditarLancamento, onAdicionar }) {
                   <span className="list-row-value" style={{ color: COR_BAIXA }}>
                     -{fmtBRL(tx.value)}
                   </span>
+                  <MenuLancamento onEditar={() => onEditarLancamento(tx)} onExcluir={() => onExcluirLancamento(tx)} />
                 </div>
               </div>
             ))}
@@ -3113,7 +2879,7 @@ function ModalLancamento({ form, editando, onChange, onSalvar, onExcluir, onFech
           Receita
         </button>
         <button
-          className={`tipo-opcao${form.type === "expense" ? " tipo-opcao-ativa expense" : ""}`}
+          className={`tipo-opcao tipo-opcao-despesa${form.type === "expense" ? " tipo-opcao-ativa expense" : ""}`}
           onClick={() => onChange({ ...form, type: "expense" })}
         >
           Despesa
@@ -3472,18 +3238,23 @@ function PaginaFinancas({ lancamentos, setLancamentos, metaDespesa, setMetaDespe
     setModalAberto(false);
   }
 
+  function excluirLancamentoDaLista(tx) {
+    setLancamentos(prev => prev.filter(t => t.id !== tx.id));
+  }
+
   return (
     <>
       <div id="sec-financas-resumo">
         <CardFinancasResumo totais={totais} meta={metaDespesa} gasto={totais.expense} />
       </div>
       <div id="sec-financas-comparativo">
-        <CardFinancasComparativo lancamentos={lancamentos} onEditar={abrirEdicaoLancamento} onAdicionar={abrirNovoLancamento} />
+        <CardFinancasComparativo lancamentos={lancamentos} onEditar={abrirEdicaoLancamento} onExcluir={excluirLancamentoDaLista} onAdicionar={abrirNovoLancamento} />
       </div>
       <div id="sec-financas-meta">
         <CardFinancasMeta
           lancamentos={lancamentos}
           onEditarLancamento={abrirEdicaoLancamento}
+          onExcluirLancamento={excluirLancamentoDaLista}
           onAdicionar={abrirNovoLancamento}
         />
       </div>
@@ -3531,7 +3302,7 @@ function LinhaConfig({ label, onClick }) {
         <span className="list-row-label">{label}</span>
       </div>
       <div className="list-row-right">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-label)" }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-value)" }}>
           <path d="M12 20h9" />
           <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
         </svg>
@@ -3550,7 +3321,7 @@ function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarR
         </SubCard>
 
         <SubCard>
-          <div style={{ marginTop: "calc(var(--space-4) * -1)", marginBottom: "calc(var(--space-4) * -1)" }}>
+          <div className="config-grid">
             <LinhaConfig label="Editar evolução do patrimônio" onClick={onEditarEvolucao} />
             <LinhaConfig label="Editar rentabilidade" onClick={onEditarRentabilidade} />
             <LinhaConfig label="Editar reserva" onClick={onEditarReserva} />
@@ -3965,7 +3736,7 @@ export default function App() {
           scrolled={scrolled}
           ativos={ativos}
           onSelectTicker={(ticker) => {
-            if (pagina !== "investimentos" && pagina !== "cotacoes") irParaPagina("investimentos");
+            if (pagina !== "investimentos") irParaPagina("investimentos");
             setSearchCmd({ ticker, v: Date.now() });
           }}
           pagina={pagina}
@@ -4013,27 +3784,6 @@ export default function App() {
                     scrollRef={scrollRef}
                     onEditarAtivo={abrirEdicaoAtivo}
                     onAdicionarAtivo={abrirNovoAtivo}
-                  />
-                </div>
-              ))}
-            </>
-          )}
-
-          {pagina === "cotacoes" && (
-            <>
-              <div id="sec-resumo-cotacoes">
-                <CardResumoCotacoes ativos={ativos.filter(a => CLASSES_ATIVOS.some(c => c.classe === a.classe))} />
-              </div>
-              {CLASSES_ATIVOS.map(c => (
-                <div id={`sec-cotacao-${c.sufixo}`} key={c.classe}>
-                  <CardCotacoesClasse
-                    titulo={c.titulo}
-                    sufixo={c.sufixo}
-                    classe={c.classe}
-                    ativos={ativos}
-                    selectedTicker={searchCmd?.ticker}
-                    searchVersion={searchCmd?.v}
-                    scrollRef={scrollRef}
                   />
                 </div>
               ))}
@@ -4505,8 +4255,14 @@ function Style() {
         border-radius: var(--radius-pill);
         transition: color 0.2s ease, background 0.2s ease;
       }
-      .navbar-tab:hover { color: var(--color-value); background: rgba(255, 255, 255, 0.06); }
-      :root[data-theme="light"] .navbar-tab:hover { background: rgba(9, 30, 27, 0.05); }
+      .navbar-tab { transition: color 0.2s ease, background 0.2s ease, box-shadow 0.3s ease; }
+      @media (hover: hover) {
+        .navbar-tab:not(.navbar-tab-ativo):hover {
+          color: var(--color-value);
+          background: linear-gradient(135deg, rgba(19,160,151,0.12), rgba(19,160,151,0.03)), var(--bg3);
+          box-shadow: 0 0 22px rgba(19,160,151,0.18);
+        }
+      }
       .navbar-tab-ativo {
         background: var(--accent);
         color: #f5f5f7;
@@ -4859,6 +4615,62 @@ function Style() {
         border-color: rgba(9, 30, 27, 0.08);
       }
       .list-row-clickable:hover::after { opacity: 0; }
+      .btn-mais-opcoes {
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        color: var(--color-value);
+        width: 36px;
+        height: 36px;
+        margin-right: -8px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+      .btn-mais-opcoes svg { width: 20px; height: 20px; }
+      .btn-mais-opcoes { transition: transform 0.2s cubic-bezier(0.22,1,0.36,1); }
+      @media (hover: hover) {
+        .btn-mais-opcoes:hover { transform: scale(1.18); }
+      }
+      .btn-mais-opcoes[aria-expanded="true"] { transform: scale(1.18); }
+      .btn-mais-opcoes:active { transform: scale(0.9); }
+      .menu-lanc-overlay { position: fixed; inset: 0; z-index: 1100; }
+      .menu-lanc {
+        position: fixed;
+        min-width: 150px;
+        background: var(--bg2);
+        border: 1px solid var(--border2);
+        border-radius: 14px;
+        padding: 6px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        animation: modalFadeIn 0.12s ease;
+      }
+      .menu-lanc-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        width: 100%;
+        background: transparent;
+        border: none;
+        border-radius: 9px;
+        padding: 10px 12px;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--color-value);
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.15s ease;
+      }
+      .menu-lanc-item:hover { background: var(--bg3); }
+      .menu-lanc-item-perigo { color: #c0504a; }
       .list-row-left { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
       .list-row-label {
         font-size: 15px;
@@ -4914,6 +4726,20 @@ function Style() {
       .list-row-filtrado::after {
         display: none !important;
       }
+      .ativo-clicavel { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; will-change: transform; }
+      @media (hover: hover) {
+        .ativo-clicavel:hover {
+          background: linear-gradient(135deg, rgba(19,160,151,0.12), rgba(19,160,151,0.03)), var(--bg3);
+          box-shadow: 0 0 22px rgba(19,160,151,0.18) !important;
+        }
+      }
+      .ativo-clicavel:active {
+        transform: translateY(0) scale(0.97) !important;
+        box-shadow: 0 0 12px rgba(19,160,151,0.25) !important;
+        filter: brightness(0.94);
+        transition-duration: 0.08s !important;
+      }
+      .ativo-clicavel:focus-visible { outline: 2px solid #13a097; outline-offset: 2px; }
       .ativo-cabecalho-filtrado {
         position: relative;
         margin: -10px;
@@ -5040,6 +4866,9 @@ function Style() {
       }
 
             .ativos-lista { display: flex; flex-direction: column; gap: var(--space-4); }
+      @media (min-width: 1200px) {
+        .ativos-lista { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+      }
 
             .heatmap-grid {
         display: grid;
@@ -5132,8 +4961,16 @@ function Style() {
       @media (max-width: 480px) {
         .modal-sheet { padding: var(--space-4); }
       }
+      @media (max-width: 640px) {
+        .modal-sheet.modal-ativo-detalhe {
+          max-width: none;
+          height: 100%;
+          max-height: none;
+        }
+      }
       @keyframes modalSlideUp { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
       .modal-header { display: flex; align-items: center; justify-content: space-between; }
+      .modal-sheet.modal-ativo-detalhe .modal-header { position: relative; z-index: 2; }
       .modal-titulo { font-size: 18px; font-weight: 600; color: var(--color-title); }
       .modal-fechar {
         background: var(--bg4);
@@ -5579,6 +5416,62 @@ function Style() {
         .subcard-titulo { padding: var(--space-1) var(--space-2) !important; }
         .campo-valor  { font-size: 17px; }
         .card-titulo  { font-size: 14px; }
+      }
+
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-3);
+      }
+      .config-grid .list-row-clickable {
+        margin: 0;
+        padding: var(--space-4) var(--space-4);
+        border: 1px solid var(--border2);
+      }
+      .config-grid .list-row-clickable::after { display: none; }
+      @media (max-width: 900px) { .config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 560px) { .config-grid { grid-template-columns: minmax(0, 1fr); } }
+
+      /* ===== Hover padrão dos botões: brilho suave, sem borda ===== */
+      @media (hover: hover) {
+        .btn-tema:not(.btn-tema-ativo):hover,
+        .btn-filtro-simples:not(.btn-filtro-simples-ativo):hover,
+        .modal-fechar:hover,
+        .menu-lanc-item:not(.menu-lanc-item-perigo):hover,
+        .dropdown-item:not(.is-ativo):hover,
+        .config-tema-btn:not(.is-ativo):hover,
+        .navbar-menu-overlay-item:not(.is-ativo):hover,
+        .form-botao-secundario:hover,
+        .tipo-opcao:not(.tipo-opcao-ativa):hover {
+          background: linear-gradient(135deg, rgba(19,160,151,0.12), rgba(19,160,151,0.03)), var(--bg3);
+          box-shadow: 0 0 22px rgba(19,160,151,0.18);
+        }
+        .tipo-opcao.tipo-opcao-despesa:not(.tipo-opcao-ativa):hover {
+          background: linear-gradient(135deg, rgba(192,80,74,0.14), rgba(192,80,74,0.04)), var(--bg3);
+          box-shadow: 0 0 22px rgba(192,80,74,0.22);
+        }
+        .list-row-clickable:hover,
+        :root[data-theme="light"] .list-row-clickable:hover,
+        .list-row-clickable.sem-zoom:hover {
+          background: linear-gradient(135deg, rgba(19,160,151,0.12), rgba(19,160,151,0.03)), var(--bg3);
+          border-color: transparent;
+          box-shadow: 0 0 22px rgba(19,160,151,0.18);
+          transform: none;
+        }
+        .form-botao:not(.form-botao-perigo):not(.form-botao-secundario):hover {
+          box-shadow: 0 0 22px rgba(19,160,151,0.3);
+        }
+        .modal-sheet.tipo-despesa .form-botao:not(.form-botao-perigo):not(.form-botao-secundario):hover {
+          box-shadow: 0 0 22px rgba(192,80,74,0.3);
+        }
+        .form-botao-perigo:hover,
+        .menu-lanc-item-perigo:hover {
+          box-shadow: 0 0 22px rgba(192,80,74,0.2);
+        }
+        .menu-lanc-item-perigo:hover { background: rgba(138,53,53,0.12); }
+      }
+      .list-row-clickable, .dropdown-item, .modal-fechar, .menu-lanc-item, .form-botao-secundario, .form-botao-perigo, .tipo-opcao, .navbar-menu-overlay-item, .config-tema-btn {
+        transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.3s ease, transform 0.15s ease;
       }
     `}</style>
   );
