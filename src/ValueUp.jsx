@@ -945,7 +945,7 @@ function LogoAtivo({ ticker, size = 72, offsetX = 0, className = "" }) {
   );
 }
 
-function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) {
+function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema, iaAberto, iaOcupado, onToggleIA }) {
   const [logoErr, setLogoErr]       = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery]           = useState("");
@@ -954,6 +954,8 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
   const searchRef                   = useRef(null);
   const inputRef                    = useRef(null);
   const menuRef                     = useRef(null);
+  const navRef                      = useRef(null);
+  const [menuTop, setMenuTop]       = useState(0);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
@@ -964,7 +966,7 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
   useEffect(() => {
     if (!searchOpen) return;
     const handler = (e) => {
-      if (!e.target.closest(".navbar") && !e.target.closest(".navbar-search-results")) {
+      if (!e.target.closest(".navbar") && !e.target.closest(".navbar-search-box")) {
         setSearchOpen(false);
         setQuery("");
       }
@@ -975,19 +977,68 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
 
   useEffect(() => {
     if (!menuAberto) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handler = (e) => { if (e.key === "Escape") setMenuAberto(false); };
-    document.addEventListener("keydown", handler);
+    const medir = () => {
+      const r = navRef.current?.getBoundingClientRect();
+      if (r) setMenuTop(r.bottom + 8);
+    };
+    medir();
+    const fechar = () => setMenuAberto(false);
+    const onKey = (e) => { if (e.key === "Escape") setMenuAberto(false); };
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", medir);
+    window.addEventListener("scroll", fechar, { passive: true });
     return () => {
-      document.body.style.overflow = prevOverflow;
-      document.removeEventListener("keydown", handler);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", medir);
+      window.removeEventListener("scroll", fechar);
     };
   }, [menuAberto]);
 
   useEffect(() => {
     if (searchOpen) setTimeout(() => inputRef.current?.focus(), 50);
   }, [searchOpen]);
+
+  const searchBoxVisivel = (isMobile && searchOpen) || (!isMobile && query.trim().length >= 1);
+  const [searchBoxPos, setSearchBoxPos] = useState(null);
+  const searchBoxRef    = useRef(null);
+  const searchOffsetRef = useRef(0);
+  const SEARCH_GAP      = 5; // px entre a barra superior e a caixa de resultados
+
+  // Confere a posição real da caixa e corrige qualquer diferença em relação ao espaçamento desejado
+  useEffect(() => {
+    if (!searchBoxPos) return;
+    const nav = navRef.current?.getBoundingClientRect();
+    const box = searchBoxRef.current?.getBoundingClientRect();
+    if (!nav || !box) return;
+    const delta = (nav.bottom + SEARCH_GAP) - box.top;
+    if (Math.abs(delta) > 0.5) {
+      searchOffsetRef.current += delta;
+      setSearchBoxPos(p => (p ? { ...p, top: p.top + delta } : p));
+    }
+  }, [searchBoxPos]);
+
+  useEffect(() => {
+    if (!searchBoxVisivel) { setSearchBoxPos(null); return; }
+    const medir = () => {
+      const nav = navRef.current?.getBoundingClientRect();
+      const inp = searchRef.current?.getBoundingClientRect();
+      if (!nav || !inp) return;
+      setSearchBoxPos({ top: nav.bottom + SEARCH_GAP + searchOffsetRef.current, left: inp.left, width: inp.width });
+    };
+    medir();
+    const nav = navRef.current;
+    const ro = typeof ResizeObserver !== "undefined" && nav ? new ResizeObserver(medir) : null;
+    if (ro) ro.observe(nav);
+    nav?.addEventListener("transitionend", medir);
+    window.addEventListener("resize", medir);
+    window.addEventListener("scroll", medir, { passive: true });
+    return () => {
+      ro?.disconnect();
+      nav?.removeEventListener("transitionend", medir);
+      window.removeEventListener("resize", medir);
+      window.removeEventListener("scroll", medir);
+    };
+  }, [searchBoxVisivel, scrolled]);
 
   const resultados = query.trim().length >= 1
     ? (ativos ?? []).filter(a =>
@@ -996,8 +1047,49 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
       ).slice(0, 6)
     : [];
 
+  const [indiceAtivo, setIndiceAtivo] = useState(-1);
+
+  useEffect(() => { setIndiceAtivo(-1); }, [query]);
+
+  useEffect(() => {
+    if (indiceAtivo < 0) return;
+    searchBoxRef.current
+      ?.querySelector(`[data-search-idx="${indiceAtivo}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [indiceAtivo]);
+
+  const selecionarResultado = (a) => {
+    const sufixo = CLASSES_ATIVOS.find(
+      c => String(a.classe).toLowerCase().trim() === c.classe
+    )?.sufixo;
+
+    if (sufixo) onSelectTicker(a.ticker);
+
+    setSearchOpen(false);
+    setQuery("");
+  };
+
+  const onKeyDownBusca = (e) => {
+    if (e.key === "Escape") {
+      setSearchOpen(false);
+      setQuery("");
+      return;
+    }
+    if (resultados.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setIndiceAtivo(i => (i + 1) % resultados.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setIndiceAtivo(i => (i <= 0 ? resultados.length - 1 : i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      selecionarResultado(resultados[indiceAtivo >= 0 ? indiceAtivo : 0]);
+    }
+  };
+
   return (
-    <nav className={`navbar ${scrolled ? "navbar-scrolled" : ""}`}>
+    <nav ref={navRef} className={`navbar ${scrolled ? "navbar-scrolled" : ""}`}>
       <div className="navbar-inner">
 
         <div className="navbar-left">
@@ -1041,39 +1133,28 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
           </button>
 
           {menuAberto && createPortal(
-            <div
-              className="navbar-menu-overlay"
-              onClick={(e) => e.target === e.currentTarget && setMenuAberto(false)}
-            >
-              <div className="navbar-menu-overlay-header">
-                <div className="navbar-left">
-                  {logoErr ? (
-                    <span className="navbar-logo">V</span>
-                  ) : (
-                    <img src={tema === "light" ? "/assets/logo_light.png" : "/assets/logo_dark.png"} alt="ValueUp" className="navbar-logo-img"
-                      onError={() => setLogoErr(true)} />
-                  )}
-                </div>
-                <button className="btn-tema" onClick={() => setMenuAberto(false)} aria-label="Fechar menu">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                    <line x1="5" y1="5" x2="19" y2="19" />
-                    <line x1="19" y1="5" x2="5" y2="19" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="navbar-menu-overlay-list">
+            <>
+              <div className="navbar-menu-backdrop" onClick={() => setMenuAberto(false)} />
+              <div className="navbar-menu-dropdown" style={{ top: menuTop }} role="menu">
                 {PAGINAS.map(p => (
                   <button
                     key={p.id}
+                    role="menuitem"
                     className={`navbar-menu-overlay-item${pagina === p.id ? " is-ativo" : ""}`}
                     onClick={() => { onNavigate(p.id); setMenuAberto(false); }}
                   >
                     {p.titulo}
                   </button>
                 ))}
+                <button
+                  role="menuitem"
+                  className={`navbar-menu-overlay-item${pagina === "configuracoes" ? " is-ativo" : ""}`}
+                  onClick={() => { onNavigate("configuracoes"); setMenuAberto(false); }}
+                >
+                  Configurações
+                </button>
               </div>
-            </div>,
+            </>,
             document.body
           )}
         </div>
@@ -1107,17 +1188,23 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
                 value={query}
                 onChange={e => { setQuery(e.target.value); setSearchOpen(true); }}
                 onFocus={() => setSearchOpen(true)}
+                onKeyDown={onKeyDownBusca}
               />
             </div>
           )}
 
-          {((isMobile && searchOpen) ||
-            (!isMobile && query.trim().length >= 1)) && (
+          {searchBoxVisivel && searchBoxPos && createPortal(
             <div
+              ref={searchBoxRef}
               className={
                 isMobile
                   ? "navbar-search-box"
                   : "navbar-search-box navbar-search-box-desktop"
+              }
+              style={
+                isMobile
+                  ? { top: searchBoxPos.top }
+                  : { position: "fixed", top: searchBoxPos.top, left: searchBoxPos.left, width: searchBoxPos.width, maxWidth: "none" }
               }
             >
               {isMobile && (
@@ -1127,6 +1214,7 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
                   placeholder="Buscar ativo..."
                   value={query}
                   onChange={e => setQuery(e.target.value)}
+                  onKeyDown={onKeyDownBusca}
                 />
               )}
 
@@ -1135,17 +1223,10 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
                   {resultados.map((a, i) => (
                     <button
                       key={i}
-                      className="navbar-search-item"
-                      onClick={() => {
-                        const sufixo = CLASSES_ATIVOS.find(
-                          c => String(a.classe).toLowerCase().trim() === c.classe
-                        )?.sufixo;
-
-                        if (sufixo) onSelectTicker(a.ticker);
-
-                        setSearchOpen(false);
-                        setQuery("");
-                      }}
+                      data-search-idx={i}
+                      className={`navbar-search-item${i === indiceAtivo ? " is-ativo" : ""}`}
+                      onMouseEnter={() => setIndiceAtivo(i)}
+                      onClick={() => selecionarResultado(a)}
                     >
                       <LogoAtivo ticker={a.ticker} size={28} />
 
@@ -1204,14 +1285,29 @@ function Navbar({ scrolled, ativos, onSelectTicker, pagina, onNavigate, tema }) 
                   </div>
                 </div>
               )}
-            </div>
+            </div>,
+            document.body
           )}
 
           </div>
         )}
 
         <button
-          className={`btn-tema${pagina === "configuracoes" ? " btn-tema-ativo" : ""}`}
+          data-ia-btn
+          className={`btn-tema navbar-ia-btn${iaAberto ? " btn-tema-ativo" : ""}`}
+          onClick={onToggleIA}
+          aria-label="Assistente de IA"
+          aria-expanded={iaAberto}
+          title="Assistente de IA"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2 2-7Z" />
+          </svg>
+          {iaOcupado && !iaAberto && <span className="navbar-ia-badge" />}
+        </button>
+
+        <button
+          className={`btn-tema navbar-config-btn${pagina === "configuracoes" ? " btn-tema-ativo" : ""}`}
           onClick={() => onNavigate("configuracoes")}
           aria-label="Configurações"
           title="Configurações"
@@ -2220,7 +2316,7 @@ function CardProventos({ proventos, onEditar }) {
   );
 }
 
-function HeatmapCell({ ativo, onSelectTicker }) {
+function HeatmapCell({ ativo, onSelect }) {
   const [imgErr, setImgErr] = useState(false);
   const [hovered, setHovered] = useState(false);
   const pct    = toFloat(ativo.variacao_percentual);
@@ -2235,8 +2331,8 @@ function HeatmapCell({ ativo, onSelectTicker }) {
       className="heatmap-cell"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => onSelectTicker?.(ativo.ticker)}
-      title={`Ver ${ticker} na lista`}
+      onClick={() => onSelect?.(ativo)}
+      title={`Ver detalhes de ${ticker}`}
       style={{
         background: cor,
         boxShadow: hovered ? "inset 0 0 0 2px rgba(255,255,255,0.4)" : "none",
@@ -2255,8 +2351,9 @@ function HeatmapCell({ ativo, onSelectTicker }) {
   );
 }
 
-function CardHeatmap({ ativos, onSelectTicker }) {
+function CardHeatmap({ ativos }) {
   const [open, setOpen] = useState(false);
+  const [ativoSel, setAtivoSel] = useState(null);
   if (!ativos?.length) return null;
 
   const df = ativos
@@ -2278,30 +2375,22 @@ function CardHeatmap({ ativos, onSelectTicker }) {
       </div>
       <SubCard style={{ overflow: "hidden" }}>
         <div className="heatmap-grid">
-          {df.slice(0, LIMITE).map((at, i) => <HeatmapCell key={i} ativo={at} onSelectTicker={onSelectTicker} />)}
+          {df.slice(0, LIMITE).map((at, i) => <HeatmapCell key={i} ativo={at} onSelect={setAtivoSel} />)}
         </div>
         {temMais && (
           <Expandable open={open}>
             <div className="heatmap-grid" style={{ marginTop: "var(--space-3)" }}>
-              {df.slice(LIMITE).map((at, i) => <HeatmapCell key={i} ativo={at} onSelectTicker={onSelectTicker} />)}
+              {df.slice(LIMITE).map((at, i) => <HeatmapCell key={i} ativo={at} onSelect={setAtivoSel} />)}
             </div>
           </Expandable>
         )}
       </SubCard>
+      {ativoSel && <ModalDetalheAtivo ativo={ativoSel} onFechar={() => setAtivoSel(null)} />}
     </Card>
   );
 }
 
-function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = null, onEditar = null }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
+function montarMetricasAtivo(ativo, soMeta = false) {
   const ehUSD = ["stock", "reit", "etf"].includes(String(ativo.classe).toLowerCase().trim());
   const cot   = toFloat(ativo.cotacao);
   const qtd   = toFloat(ativo.quantidade);
@@ -2336,6 +2425,41 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
         { titulo: "% Atual",         chave: "porcentagem_atual",     valor: `${pat.toFixed(2)}%`,               cor: null        },
         { titulo: textoSF,           chave: null,                    valor: `${ssf}${Math.abs(psf).toFixed(2)}%`, cor: corVar(psf) },
       ];
+  return { metricas, pat };
+}
+
+function ModalDetalheAtivo({ ativo, onFechar, sortBy = null }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onFechar();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onFechar]);
+
+  const { metricas } = montarMetricasAtivo(ativo);
+
+  return (
+    <ModalFinancas titulo="" onFechar={onFechar} className="modal-ativo-detalhe">
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", marginTop: "calc(var(--space-4) * -2.5)", marginBottom: "calc(var(--space-4) * -1)" }}>
+        <LogoAtivo ticker={ativo.ticker} size={72} />
+        <div style={{ minWidth: 0 }}>
+          <div className="ativo-nome-ticker">{String(ativo.ticker).toUpperCase()}</div>
+          <div className="ativo-nome-texto">{ativo.nome}</div>
+        </div>
+      </div>
+      <div className="divisor" />
+      <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
+        {metricas.map((m) => (
+          <ListRow key={m.titulo} label={m.titulo} value={m.valor} valueColor={m.cor} plain highlight={!!m.chave && m.chave === sortBy} />
+        ))}
+      </div>
+    </ModalFinancas>
+  );
+}
+
+function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = null, onEditar = null }) {
+  const [open, setOpen] = useState(false);
+
+  const { metricas, pat } = montarMetricasAtivo(ativo, soMeta);
 
   const clicavel = !titulo && !soMeta;
 
@@ -2354,8 +2478,8 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
       overflow: "hidden",
       transition: "box-shadow 0.4s ease, border-color 0.4s ease, transform 0.22s cubic-bezier(0.22,1,0.36,1), background 0.22s ease",
       ...(highlight ? {
-        boxShadow: "0 0 0 1px #13a097, 0 0 12px rgba(19,160,151,0.2)",
-        borderColor: "#13a097",
+        background: "linear-gradient(135deg, rgba(19,160,151,0.12), rgba(19,160,151,0.03)), var(--bg3)",
+        boxShadow: "0 0 22px rgba(19,160,151,0.18)",
       } : {}),
     }}>
       {titulo ? (
@@ -2414,21 +2538,7 @@ function CardAtivo({ ativo, highlight, soMeta = false, titulo = null, sortBy = n
       )}
     </SubCard>
     {open && clicavel && (
-      <ModalFinancas titulo="" onFechar={() => setOpen(false)} className="modal-ativo-detalhe">
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", marginTop: "calc(var(--space-4) * -2.5)", marginBottom: "calc(var(--space-4) * -1)" }}>
-          <LogoAtivo ticker={ativo.ticker} size={72} />
-          <div style={{ minWidth: 0 }}>
-            <div className="ativo-nome-ticker">{String(ativo.ticker).toUpperCase()}</div>
-            <div className="ativo-nome-texto">{ativo.nome}</div>
-          </div>
-        </div>
-        <div className="divisor" />
-        <div style={{ marginBottom: "calc(var(--space-4) * -1)" }}>
-          {metricas.map((m) => (
-            <ListRow key={m.titulo} label={m.titulo} value={m.valor} valueColor={m.cor} plain highlight={!!m.chave && m.chave === sortBy} />
-          ))}
-        </div>
-      </ModalFinancas>
+      <ModalDetalheAtivo ativo={ativo} sortBy={sortBy} onFechar={() => setOpen(false)} />
     )}
     </>
   );
@@ -2447,7 +2557,7 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
       String(a.ticker) === selectedTicker &&
       String(a.classe).toLowerCase().trim() === classe
     );
-    if (!pertenceAessa) return;
+    if (!pertenceAessa) { setHighlightTicker(null); return; }
 
     const jaAberto = open;
     setOpen(true);
@@ -2462,7 +2572,6 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
         const offset        = container.scrollTop + elRect.top - containerRect.top - 110;
         container.scrollTo({ top: offset, behavior: "smooth" });
       }
-      setTimeout(() => setHighlightTicker(null), 2000);
     };
 
     let t;
@@ -2481,6 +2590,15 @@ function CardClasse({ titulo, sufixo, classe, totais, ativos, selectedTicker, se
 
     return () => clearTimeout(t);
   }, [searchVersion]);
+
+  useEffect(() => {
+    if (!highlightTicker) return;
+    const aoClicar = (e) => {
+      if (!e.target.closest?.(`#ativo-${highlightTicker}`)) setHighlightTicker(null);
+    };
+    document.addEventListener("pointerdown", aoClicar);
+    return () => document.removeEventListener("pointerdown", aoClicar);
+  }, [highlightTicker]);
 
   const handleSort = (key) => {
     if (sortBy === key) {
@@ -2866,6 +2984,26 @@ function ModalFinancas({ titulo, onFechar, children, className }) {
   );
 }
 
+function ModalConfirmarExclusao({ tx, onConfirmar, onCancelar }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onCancelar();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancelar]);
+
+  return (
+    <ModalFinancas titulo="Excluir lançamento" onFechar={onCancelar}>
+      <div className="campo-titulo" style={{ lineHeight: 1.5 }}>
+        Tem certeza que deseja excluir <strong style={{ color: "var(--color-value)" }}>{tx.name}</strong> ({fmtBRL(tx.value)})? Essa ação não pode ser desfeita.
+      </div>
+      <div className="confirmar-exclusao-acoes">
+        <button className="form-botao form-botao-perigo form-botao-confirmar-exclusao" onClick={onConfirmar}>Excluir</button>
+        <button className="form-botao form-botao-secundario" onClick={onCancelar}>Cancelar</button>
+      </div>
+    </ModalFinancas>
+  );
+}
+
 function ModalLancamento({ form, editando, onChange, onSalvar, onExcluir, onFechar, formatarValor }) {
   const tipoClasse = form.type === "expense" ? "tipo-despesa" : "tipo-receita";
 
@@ -3183,6 +3321,7 @@ function PaginaFinancas({ lancamentos, setLancamentos, metaDespesa, setMetaDespe
   const [modalAberto, setModalAberto] = useState(false);
   const [editandoId, setEditandoId]   = useState(null);
   const [form, setForm]               = useState({ name: "", value: "", type: "income" });
+  const [txParaExcluir, setTxParaExcluir] = useState(null);
 
   const totais = {
     income:  lancamentos.filter(t => t.type === "income" ).reduce((s, t) => s + t.value, 0),
@@ -3234,12 +3373,20 @@ function PaginaFinancas({ lancamentos, setLancamentos, metaDespesa, setMetaDespe
 
   function excluirLancamento() {
     if (editandoId == null) return;
-    setLancamentos(prev => prev.filter(t => t.id !== editandoId));
-    setModalAberto(false);
+    const tx = lancamentos.find(t => t.id === editandoId);
+    if (tx) setTxParaExcluir(tx);
   }
 
   function excluirLancamentoDaLista(tx) {
-    setLancamentos(prev => prev.filter(t => t.id !== tx.id));
+    setTxParaExcluir(tx);
+  }
+
+  function confirmarExclusao() {
+    if (!txParaExcluir) return;
+    const id = txParaExcluir.id;
+    setLancamentos(prev => prev.filter(t => t.id !== id));
+    setTxParaExcluir(null);
+    setModalAberto(false);
   }
 
   return (
@@ -3268,6 +3415,14 @@ function PaginaFinancas({ lancamentos, setLancamentos, metaDespesa, setMetaDespe
           onExcluir={excluirLancamento}
           onFechar={() => setModalAberto(false)}
           formatarValor={formatarBRL}
+        />
+      )}
+
+      {txParaExcluir && (
+        <ModalConfirmarExclusao
+          tx={txParaExcluir}
+          onConfirmar={confirmarExclusao}
+          onCancelar={() => setTxParaExcluir(null)}
         />
       )}
 
@@ -3368,6 +3523,954 @@ function PaginaConfiguracoes({ tema, onAlternarTema, onEditarEvolucao, onEditarR
   );
 }
 
+// =====================================================================
+// Assistente IA — Gemini (camada gratuita) via Cloudflare Worker + function calling
+// A chave da Gemini fica só no Worker; o app conversa com o Worker.
+// Leituras rodam direto; qualquer alteração de dados pede confirmação.
+// =====================================================================
+
+const IA_CFG_KEY    = "valueup_ia_cfg";
+const IA_MAX_PASSOS = 6;
+// true = envia um retrato resumido dos seus dados junto de cada mensagem (respostas bem mais rápidas, 1 chamada).
+// false = a IA só recebe o que pedir por ferramentas (mais privado, porém mais lento).
+const IA_ENVIAR_RESUMO = true;
+const IA_PAGINAS    = ["patrimonio", "investimentos", "financas", "configuracoes"];
+
+const IA_SUGESTOES = [
+  "Qual ativo está com maior valorização?",
+  "Qual ativo mais perdeu valor?",
+  "Quanto tenho em cada classe?",
+  "Em qual classe devo aportar?",
+  "Como estão meus gastos?",
+  "Qual o meu patrimônio total?",
+  "Quanto já aportei no total?",
+  "Qual minha rentabilidade geral?",
+  "Quanto tenho na reserva?",
+  "Quais são meus 5 maiores ativos?",
+  "Como está minha alocação em relação às metas?",
+  "Quanto tenho em ações?",
+  "Quanto tenho em fundos imobiliários?",
+  "Quanto tenho em dólar?",
+  "Qual a cotação do dólar hoje?",
+  "Quanto tenho em bitcoin?",
+  "Quais foram meus últimos lançamentos?",
+  "Qual minha maior despesa do mês?",
+  "Estou dentro da meta de gastos?",
+  "Quanto sobrou este mês?",
+  "Qual classe está mais distante da meta?",
+  "Me dê um resumo da minha carteira",
+  "Quais ativos estão no prejuízo?",
+  "Qual o preço médio do meu maior ativo?",
+  "Mude o tema para claro",
+  "Vá para a página de finanças",
+  "Abra as configurações",
+];
+
+function sortearSugestoesIA(qtd = 4) {
+  const a = [...IA_SUGESTOES];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, qtd);
+}
+
+const IA_SISTEMA = `Você é o assistente do ValueUp, o app pessoal do usuário para acompanhar patrimônio, investimentos e finanças.
+Responda sempre em português do Brasil, de forma curta e direta.
+Nunca invente números. No fim destas instruções há um RETRATO ATUAL dos dados do usuário: use-o para responder. Chame as ferramentas de leitura só quando faltar algum detalhe (ex.: preço médio, quantidade, cotação).
+Valores em R$, exceto onde indicado. Stocks, REITs e ETFs têm cotação e preço médio em US$, mas os totais das ferramentas já vêm convertidos para R$.
+Classes de ativos: stock, reit, acao, fii, etf, bitcoin. A reserva é separada dos ativos.
+Para alterar qualquer dado use as ferramentas de ação. O app já pede a confirmação ao usuário, então chame a ferramenta direto, sem pedir permissão em texto. Se faltar alguma informação (ex.: o valor), pergunte antes.
+Você pode apontar fatos e comparar com as metas do usuário, mas não trate isso como recomendação financeira garantida.
+Formato: texto simples; pode usar **negrito** e listas com "-".`;
+
+const IA_FERRAMENTAS = [
+  {
+    name: "resumo_geral",
+    description: "Totais do patrimônio: valor atual, aportado, variação, investimentos, reserva, valor em dólar e cotação do dólar.",
+  },
+  {
+    name: "resumo_classes",
+    description: "Resumo por classe (stocks, reits, ações, fiis, etfs, bitcoins e reserva): total, aportado, variação, % do patrimônio, % da meta e diferença para a meta.",
+  },
+  {
+    name: "ranking_ativos",
+    description: "Lista ativos ordenados por um critério. Use para maior/menor valorização, maiores posições, ativos mais abaixo da meta etc.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        ordenar_por: {
+          type: "STRING",
+          enum: ["variacao_percentual", "variacao_total", "total_atual", "total_investido", "porcentagem_atual", "porcentagem_sobrando_faltando"],
+          description: "Critério. porcentagem_sobrando_faltando: negativo = abaixo da meta da classe.",
+        },
+        ordem:  { type: "STRING", enum: ["desc", "asc"], description: "desc = maiores primeiro (padrão)." },
+        classe: { type: "STRING", enum: ["stock", "reit", "acao", "fii", "etf", "bitcoin"], description: "Filtrar por classe (opcional)." },
+        limite: { type: "NUMBER", description: "Quantos ativos retornar (padrão 5, máximo 30)." },
+      },
+      required: ["ordenar_por"],
+    },
+  },
+  {
+    name: "buscar_ativo",
+    description: "Detalhes de um ativo (quantidade, preço médio, cotação, variação, % da meta) por ticker ou nome.",
+    parameters: {
+      type: "OBJECT",
+      properties: { consulta: { type: "STRING", description: "Ticker ou parte do nome." } },
+      required: ["consulta"],
+    },
+  },
+  {
+    name: "listar_lancamentos",
+    description: "Receitas e despesas cadastradas na aba Finanças, totais, saldo e meta de gastos.",
+  },
+  {
+    name: "editar_ativo",
+    description: "Altera (ou cadastra, se não existir) um ativo. Envie só os campos que mudam. preço médio em US$ para stock/reit/etf e em R$ para os demais; dólar médio na compra em R$.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        ticker:           { type: "STRING" },
+        nome:             { type: "STRING" },
+        classe:           { type: "STRING", enum: ["stock", "reit", "acao", "fii", "etf", "bitcoin"], description: "Obrigatória só para ativo novo." },
+        quantidade:       { type: "NUMBER" },
+        preco_medio:      { type: "NUMBER" },
+        dolar_compra:     { type: "NUMBER" },
+        porcentagem_meta: { type: "NUMBER", description: "% meta dentro da classe." },
+      },
+      required: ["ticker"],
+    },
+  },
+  {
+    name: "remover_ativo",
+    description: "Remove o cadastro de um ativo.",
+    parameters: { type: "OBJECT", properties: { ticker: { type: "STRING" } }, required: ["ticker"] },
+  },
+  {
+    name: "definir_reserva",
+    description: "Define o valor atual da reserva, em R$.",
+    parameters: { type: "OBJECT", properties: { valor: { type: "NUMBER" } }, required: ["valor"] },
+  },
+  {
+    name: "definir_meta_alocacao",
+    description: "Define a meta de alocação (% do patrimônio) de uma classe.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        classe:     { type: "STRING", enum: ["stocks", "reits", "acoes", "fiis", "etfs", "bitcoins", "reservas"] },
+        percentual: { type: "NUMBER", description: "De 0 a 100." },
+      },
+      required: ["classe", "percentual"],
+    },
+  },
+  {
+    name: "definir_meta_gastos",
+    description: "Define a meta mensal de gastos, em R$ (0 remove a meta).",
+    parameters: { type: "OBJECT", properties: { valor: { type: "NUMBER" } }, required: ["valor"] },
+  },
+  {
+    name: "adicionar_lancamento",
+    description: "Adiciona uma receita ou despesa na aba Finanças.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        tipo:      { type: "STRING", enum: ["receita", "despesa"] },
+        descricao: { type: "STRING" },
+        valor:     { type: "NUMBER", description: "Valor positivo em R$." },
+      },
+      required: ["tipo", "descricao", "valor"],
+    },
+  },
+  {
+    name: "remover_lancamento",
+    description: "Exclui um lançamento pela descrição.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        descricao: { type: "STRING" },
+        tipo:      { type: "STRING", enum: ["receita", "despesa"], description: "Opcional, para desambiguar." },
+      },
+      required: ["descricao"],
+    },
+  },
+  {
+    name: "alterar_tema",
+    description: "Troca o tema do app.",
+    parameters: { type: "OBJECT", properties: { tema: { type: "STRING", enum: ["claro", "escuro"] } }, required: ["tema"] },
+  },
+  {
+    name: "ir_para_pagina",
+    description: "Navega para uma página do app.",
+    parameters: { type: "OBJECT", properties: { pagina: { type: "STRING", enum: ["patrimonio", "investimentos", "financas", "configuracoes"] } }, required: ["pagina"] },
+  },
+];
+
+const IA_ACOES_COM_CONFIRMACAO = new Set([
+  "editar_ativo", "remover_ativo", "definir_reserva", "definir_meta_alocacao",
+  "definir_meta_gastos", "adicionar_lancamento", "remover_lancamento",
+]);
+const IA_ACOES_LIVRES = new Set(["alterar_tema", "ir_para_pagina"]);
+
+function carregarCfgIA() {
+  try {
+    const c = JSON.parse(localStorage.getItem(IA_CFG_KEY) || "{}");
+    return { url: String(c.url ?? "").trim(), token: String(c.token ?? "").trim() };
+  } catch {
+    return { url: "", token: "" };
+  }
+}
+
+function salvarCfgIA(cfg) {
+  try { localStorage.setItem(IA_CFG_KEY, JSON.stringify(cfg)); } catch {}
+}
+
+function semAcento(s) {
+  return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+function r2(n) { return Math.round(toFloat(n) * 100) / 100; }
+
+function temNumero(v) {
+  return v != null && String(v).trim() !== "" && !isNaN(parseFloat(String(v).replace(",", ".")));
+}
+
+const MAPA_CLASSE_IA = {
+  stock: "stock", stocks: "stock", reit: "reit", reits: "reit",
+  acao: "acao", acoes: "acao", fii: "fii", fiis: "fii",
+  etf: "etf", etfs: "etf", bitcoin: "bitcoin", bitcoins: "bitcoin", btc: "bitcoin",
+};
+const SUFIXO_POR_CLASSE_IA = { stock: "stocks", reit: "reits", acao: "acoes", fii: "fiis", etf: "etfs", bitcoin: "bitcoins" };
+
+function normalizarClasseIA(x) { return MAPA_CLASSE_IA[semAcento(x)] ?? null; }
+
+function sufixoMetaIA(x) {
+  const s = semAcento(x);
+  if (s === "reserva" || s === "reservas") return "reservas";
+  const cl = normalizarClasseIA(x);
+  return cl ? SUFIXO_POR_CLASSE_IA[cl] : null;
+}
+
+function mapAtivoIA(a) {
+  return {
+    ticker: String(a.ticker).toUpperCase(),
+    nome: a.nome,
+    classe: a.classe,
+    quantidade: toFloat(a.quantidade),
+    cotacao_moeda_original: r2(a.cotacao),
+    total_atual_brl: r2(a.total_atual),
+    total_investido_brl: r2(a.total_investido),
+    variacao_total_brl: r2(a.variacao_total),
+    variacao_percentual: r2(a.variacao_percentual),
+    porcentagem_atual_na_classe: r2(a.porcentagem_atual),
+    porcentagem_meta_na_classe: r2(a.porcentagem_meta),
+    sobrando_faltando_pct: r2(a.porcentagem_sobrando_faltando),
+  };
+}
+
+function executarLeituraIA(nome, args, c) {
+  const t = c.totais?.[0] ?? {};
+  switch (nome) {
+    case "resumo_geral": {
+      const aportado = toFloat(t.total_aportado);
+      const dif = toFloat(t.total_diferenca_patrimonio);
+      return {
+        patrimonio_total_brl: r2(t.total_patrimonio),
+        aportado_brl: r2(aportado),
+        variacao_brl: r2(dif),
+        variacao_pct: aportado > 0 ? r2((dif / aportado) * 100) : 0,
+        investimentos_brl: r2(t.total_investimentos),
+        reserva_brl: r2(c.dadosLocais.reserva_atual),
+        patrimonio_usd: r2(t.total_patrimonio_usd),
+        cotacao_dolar: r2(c.taxaDolar),
+        quantidade_ativos: c.ativos.filter(a => toFloat(a.quantidade) > 0).length,
+      };
+    }
+
+    case "resumo_classes": {
+      const al = c.alocacao?.[0] ?? {};
+      const classes = CLASSES_ATIVOS.map(({ titulo, sufixo }) => {
+        const total = toFloat(t[`total_${sufixo}`]);
+        const aportado = toFloat(t[`total_aportado_${sufixo}`]);
+        return {
+          classe: titulo,
+          total_brl: r2(total),
+          aportado_brl: r2(aportado),
+          variacao_brl: r2(total - aportado),
+          variacao_pct: aportado > 0 ? r2(((total - aportado) / aportado) * 100) : 0,
+          pct_do_patrimonio: r2(al[`alocacao_atual_${sufixo}`]),
+          meta_pct: r2(al[`alocacao_ideal_${sufixo}`]),
+          diferenca_pct: r2(al[`alocacao_diferenca_${sufixo}`]),
+        };
+      });
+      classes.push({
+        classe: "Reserva",
+        total_brl: r2(c.dadosLocais.reserva_atual),
+        pct_do_patrimonio: r2(al.alocacao_atual_reservas),
+        meta_pct: r2(al.alocacao_ideal_reservas),
+        diferenca_pct: r2(al.alocacao_diferenca_reservas),
+      });
+      return { classes, observacao: "diferenca_pct negativa = abaixo da meta (falta aportar); positiva = acima da meta." };
+    }
+
+    case "ranking_ativos": {
+      const chaves = ["variacao_percentual", "variacao_total", "total_atual", "total_investido", "porcentagem_atual", "porcentagem_sobrando_faltando"];
+      const ordenar = chaves.includes(args.ordenar_por) ? args.ordenar_por : "variacao_percentual";
+      const dir = args.ordem === "asc" ? 1 : -1;
+      const classe = args.classe != null ? normalizarClasseIA(args.classe) : null;
+      if (args.classe != null && !classe) return { erro: `Classe inválida: ${args.classe}.` };
+      const limite = Math.min(Math.max(parseInt(args.limite, 10) || 5, 1), 30);
+      const base = c.ativos.filter(a => toFloat(a.quantidade) > 0 && (!classe || a.classe === classe));
+      const ativos = [...base]
+        .sort((x, y) => (toFloat(x[ordenar]) - toFloat(y[ordenar])) * dir)
+        .slice(0, limite)
+        .map(mapAtivoIA);
+      return { ordenado_por: ordenar, ordem: dir === 1 ? "asc" : "desc", total_considerados: base.length, ativos };
+    }
+
+    case "buscar_ativo": {
+      const q = semAcento(args.consulta);
+      if (!q) return { erro: "Informe o ticker ou o nome." };
+      const achados = c.ativos
+        .filter(a => semAcento(a.ticker).includes(q) || semAcento(a.nome).includes(q))
+        .sort((x, y) => (semAcento(y.ticker) === q) - (semAcento(x.ticker) === q))
+        .slice(0, 5);
+      if (!achados.length) return { erro: `Nenhum ativo encontrado para "${args.consulta}".` };
+      return {
+        ativos: achados.map(a => ({ ...mapAtivoIA(a), preco_medio_moeda_original: r2(a.preco_medio), dolar_medio_compra: r2(a.dolar_compra) })),
+      };
+    }
+
+    case "listar_lancamentos": {
+      const lista = c.lancamentos ?? [];
+      const receitas = lista.filter(l => l.type === "income").reduce((s, l) => s + toFloat(l.value), 0);
+      const despesas = lista.filter(l => l.type === "expense").reduce((s, l) => s + toFloat(l.value), 0);
+      const meta = toFloat(c.metaDespesa);
+      return {
+        lancamentos: lista.map(l => ({ tipo: l.type === "income" ? "receita" : "despesa", descricao: l.name, valor_brl: r2(l.value) })),
+        receitas_total_brl: r2(receitas),
+        despesas_total_brl: r2(despesas),
+        saldo_brl: r2(receitas - despesas),
+        meta_gastos_brl: r2(meta),
+        restante_da_meta_brl: meta > 0 ? r2(meta - despesas) : null,
+      };
+    }
+
+    default:
+      return { erro: `Ferramenta desconhecida: ${nome}.` };
+  }
+}
+
+function montarResumoIA(c) {
+  if (!c?.totais?.length) return "";
+  const geral = executarLeituraIA("resumo_geral", {}, c);
+  const classes = executarLeituraIA("resumo_classes", {}, c).classes;
+  const ativos = c.ativos
+    .filter(a => toFloat(a.quantidade) > 0)
+    .slice(0, 80)
+    .map(a => {
+      const m = mapAtivoIA(a);
+      return {
+        ticker: m.ticker, nome: m.nome, classe: m.classe,
+        total_brl: m.total_atual_brl, variacao_brl: m.variacao_total_brl, variacao_pct: m.variacao_percentual,
+        pct_na_classe: m.porcentagem_atual_na_classe, meta_na_classe: m.porcentagem_meta_na_classe,
+        sobrando_faltando_pct: m.sobrando_faltando_pct,
+      };
+    });
+  const fin = executarLeituraIA("listar_lancamentos", {}, c);
+  fin.lancamentos = fin.lancamentos.slice(0, 40);
+  return `\n\nRETRATO ATUAL (R$; variacao_pct = valorização sobre o aportado; sobrando_faltando_pct negativo = abaixo da meta):\n` +
+    JSON.stringify({ geral, classes, ativos, financas: fin });
+}
+
+function descreverAcaoIA(nome, a) {
+  const brl = v => fmtBRL(toFloat(v));
+  const tk  = String(a.ticker ?? "").toUpperCase();
+  switch (nome) {
+    case "editar_ativo": {
+      const p = [];
+      if (a.nome != null)             p.push(`nome: ${a.nome}`);
+      if (a.classe != null)           p.push(`classe: ${a.classe}`);
+      if (a.quantidade != null)       p.push(`quantidade: ${a.quantidade}`);
+      if (a.preco_medio != null)      p.push(`preço médio: ${a.preco_medio}`);
+      if (a.dolar_compra != null)     p.push(`dólar médio: ${brl(a.dolar_compra)}`);
+      if (a.porcentagem_meta != null) p.push(`% meta: ${a.porcentagem_meta}%`);
+      return `Alterar o ativo ${tk}${p.length ? ` — ${p.join(", ")}` : ""}`;
+    }
+    case "remover_ativo":          return `Remover o cadastro do ativo ${tk}`;
+    case "definir_reserva":        return `Definir a reserva em ${brl(a.valor)}`;
+    case "definir_meta_alocacao":  return `Definir a meta de ${a.classe} em ${toFloat(a.percentual)}%`;
+    case "definir_meta_gastos":    return `Definir a meta de gastos em ${brl(a.valor)}`;
+    case "adicionar_lancamento":   return `Adicionar ${semAcento(a.tipo) === "receita" ? "receita" : "despesa"} "${a.descricao}" de ${brl(a.valor)}`;
+    case "remover_lancamento":     return `Excluir o lançamento "${a.descricao}"`;
+    default:                       return nome;
+  }
+}
+
+function criarExecutorIA({ ctxRef, setDadosLocais, setLancamentos, setMetaDespesa, setTema, irParaPagina }) {
+  const erro = (mensagem) => ({ ok: false, erro: mensagem });
+
+  return (nome, a) => {
+    const c = ctxRef.current;
+    const ativosSalvos = c?.dadosLocais?.ativos ?? {};
+    const achaChave = (ticker) =>
+      Object.keys(ativosSalvos).find(k => k.toLowerCase() === String(ticker).toLowerCase());
+
+    switch (nome) {
+      case "editar_ativo": {
+        const ticker = String(a.ticker ?? "").trim();
+        if (!ticker) return erro("Informe o ticker do ativo.");
+        const chave = achaChave(ticker);
+        const classe = a.classe != null ? normalizarClasseIA(a.classe) : null;
+        if (a.classe != null && !classe) return erro(`Classe inválida: ${a.classe}.`);
+        if (!chave && !classe) return erro("Esse ticker não está cadastrado. Para criar um ativo novo, informe a classe.");
+
+        setDadosLocais(prev => {
+          const ativos = { ...(prev.ativos ?? {}) };
+          const k = Object.keys(ativos).find(x => x.toLowerCase() === ticker.toLowerCase()) ?? ticker.toLowerCase();
+          const novo = { ...(ativos[k] ?? { nome: "", classe: "", quantidade: 0, preco_medio: 0, dolar_compra: 0, porcentagem_meta: 0, cotacao: 0 }) };
+          if (classe) novo.classe = classe;
+          if (a.nome != null)             novo.nome = String(a.nome).trim();
+          if (a.quantidade != null)       novo.quantidade = toFloat(a.quantidade);
+          if (a.preco_medio != null)      novo.preco_medio = toFloat(a.preco_medio);
+          if (a.dolar_compra != null)     novo.dolar_compra = toFloat(a.dolar_compra);
+          if (a.porcentagem_meta != null) novo.porcentagem_meta = toFloat(a.porcentagem_meta);
+          ativos[k] = novo;
+          return { ...prev, ativos };
+        });
+        return chave
+          ? { ok: true, mensagem: `Ativo ${ticker.toUpperCase()} atualizado.` }
+          : { ok: true, mensagem: `Ativo ${ticker.toUpperCase()} cadastrado. A cotação vem da planilha: confirme que o ticker existe nela.` };
+      }
+
+      case "remover_ativo": {
+        const ticker = String(a.ticker ?? "").trim();
+        const chave = achaChave(ticker);
+        if (!chave) return erro(`Ativo ${ticker.toUpperCase()} não está cadastrado.`);
+        setDadosLocais(prev => {
+          const ativos = { ...(prev.ativos ?? {}) };
+          const k = Object.keys(ativos).find(x => x.toLowerCase() === ticker.toLowerCase());
+          if (k) delete ativos[k];
+          return { ...prev, ativos };
+        });
+        return { ok: true, mensagem: `Cadastro de ${ticker.toUpperCase()} removido.` };
+      }
+
+      case "definir_reserva": {
+        if (!temNumero(a.valor) || toFloat(a.valor) < 0) return erro("Informe um valor válido para a reserva.");
+        const v = toFloat(a.valor);
+        setDadosLocais(prev => ({ ...prev, reserva_atual: v }));
+        return { ok: true, mensagem: `Reserva definida em ${fmtBRL(v)}.` };
+      }
+
+      case "definir_meta_alocacao": {
+        const suf = sufixoMetaIA(a.classe);
+        if (!suf) return erro(`Classe inválida: ${a.classe}.`);
+        if (!temNumero(a.percentual)) return erro("Informe o percentual da meta.");
+        const p = toFloat(a.percentual);
+        if (p < 0 || p > 100) return erro("O percentual precisa estar entre 0 e 100.");
+        setDadosLocais(prev => ({ ...prev, metas: { ...(prev.metas ?? {}), [suf]: p } }));
+        const titulo = ALOCACAO_CLASSES.find(x => x.sufixo === suf)?.titulo ?? suf;
+        const soma = ALOCACAO_CLASSES.reduce(
+          (s, x) => s + (x.sufixo === suf ? p : toFloat(c?.dadosLocais?.metas?.[x.sufixo])), 0
+        );
+        return { ok: true, mensagem: `Meta de ${titulo} definida em ${p}%. Soma das metas: ${r2(soma)}%.`, soma_das_metas_pct: r2(soma) };
+      }
+
+      case "definir_meta_gastos": {
+        if (!temNumero(a.valor) || toFloat(a.valor) < 0) return erro("Informe um valor válido para a meta de gastos.");
+        const v = toFloat(a.valor);
+        setMetaDespesa(v);
+        return { ok: true, mensagem: v > 0 ? `Meta de gastos definida em ${fmtBRL(v)}.` : "Meta de gastos removida." };
+      }
+
+      case "adicionar_lancamento": {
+        const tp = semAcento(a.tipo);
+        const type = tp === "receita" ? "income" : tp === "despesa" ? "expense" : null;
+        const descricao = String(a.descricao ?? "").trim();
+        if (!type) return erro("O tipo precisa ser receita ou despesa.");
+        if (!descricao) return erro("Informe a descrição do lançamento.");
+        if (!temNumero(a.valor) || toFloat(a.valor) <= 0) return erro("Informe um valor maior que zero.");
+        const valor = toFloat(a.valor);
+        setLancamentos(prev => [{ id: Date.now(), name: descricao, value: valor, type }, ...prev]);
+        return { ok: true, mensagem: `${type === "income" ? "Receita" : "Despesa"} "${descricao}" de ${fmtBRL(valor)} adicionada.` };
+      }
+
+      case "remover_lancamento": {
+        const q = semAcento(a.descricao);
+        if (!q) return erro("Informe a descrição do lançamento.");
+        const tp = semAcento(a.tipo);
+        const type = tp === "receita" ? "income" : tp === "despesa" ? "expense" : null;
+        const achados = (c?.lancamentos ?? []).filter(l =>
+          semAcento(l.name).includes(q) && (!type || l.type === type)
+        );
+        if (achados.length === 0) return erro(`Nenhum lançamento encontrado para "${a.descricao}".`);
+        if (achados.length > 1) {
+          return erro(`Vários lançamentos correspondem: ${achados.map(l => `"${l.name}"`).join(", ")}. Peça ao usuário para especificar.`);
+        }
+        const alvo = achados[0];
+        setLancamentos(prev => prev.filter(l => l.id !== alvo.id));
+        return { ok: true, mensagem: `Lançamento "${alvo.name}" excluído.` };
+      }
+
+      case "alterar_tema": {
+        const s = semAcento(a.tema);
+        const novo = s === "claro" || s === "light" ? "light" : s === "escuro" || s === "dark" ? "dark" : null;
+        if (!novo) return erro("O tema precisa ser claro ou escuro.");
+        setTema(novo);
+        return { ok: true, mensagem: `Tema ${novo === "light" ? "claro" : "escuro"} ativado.` };
+      }
+
+      case "ir_para_pagina": {
+        const p = semAcento(a.pagina);
+        if (!IA_PAGINAS.includes(p)) return erro(`Página inválida: ${a.pagina}.`);
+        irParaPagina(p);
+        return { ok: true, mensagem: `Abri a página ${p}.` };
+      }
+
+      default:
+        return erro(`Ferramenta desconhecida: ${nome}.`);
+    }
+  };
+}
+
+async function chamarGemini(cfg, contents, signal, sistema = IA_SISTEMA) {
+  const headers = { "Content-Type": "application/json" };
+  if (cfg.token) headers["x-app-token"] = cfg.token;
+
+  const resp = await fetch(cfg.url.trim().replace(/\/+$/, "").replace(/\/chat$/, "") + "/chat", {
+    method: "POST",
+    headers,
+    signal,
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: sistema }] },
+      contents,
+      tools: [{ functionDeclarations: IA_FERRAMENTAS }],
+      generationConfig: { temperature: 0.3 },
+    }),
+  });
+
+  if (!resp.ok) {
+    let detalhe = "";
+    try {
+      const j = await resp.json();
+      detalhe = j?.error?.message || (typeof j?.error === "string" ? j.error : "");
+    } catch {}
+    const err = new Error(detalhe || `Erro ${resp.status} ao falar com o Worker.`);
+    err.status = resp.status;
+    throw err;
+  }
+  return resp.json();
+}
+
+function mensagemErroIA(e) {
+  if (e?.status === 401) return "Token inválido. Confira o token nas configurações do assistente.";
+  if (e?.status === 403) return "Origem não autorizada no Worker (confira ALLOWED_ORIGINS).";
+  if (e?.status === 404) return "Endereço do Worker não encontrado (404). Confira a URL nas configurações: ela deve ser só https://nome.usuario.workers.dev, sem nada depois.";
+  if (e?.status === 429) return "O limite gratuito da Gemini foi atingido por agora. Tente de novo em instantes.";
+  if (e?.status === 503 || e?.status === 500 || e?.status === 504) return "A Gemini está sobrecarregada no momento (já tentei algumas vezes). Tente de novo em alguns segundos.";
+  if (e instanceof TypeError) {
+    const origem = typeof window !== "undefined" ? window.location.origin : "";
+    return `Não consegui falar com o Worker. Confira a URL nas configurações e sua conexão. Se a URL estiver certa, o Worker pode estar bloqueando esta origem (${origem}): inclua-a em ALLOWED_ORIGINS.`;
+  }
+  return e?.message || "Erro inesperado.";
+}
+
+function podarHistoricoIA(hist) {
+  if (hist.length <= 40) return hist;
+  let i = hist.length - 30;
+  while (i < hist.length && !(hist[i].role === "user" && hist[i].parts?.[0]?.text)) i++;
+  return i < hist.length ? hist.slice(i) : hist;
+}
+
+function TextoIA({ texto }) {
+  return (
+    <>
+      {String(texto).split("\n").map((linha, i) => {
+        const bullet = /^\s*[-*•]\s+/.test(linha);
+        const conteudo = linha.replace(/^\s*[-*•]\s+/, "");
+        const partes = conteudo.split(/(\*\*[^*]+\*\*)/g).map((p, j) =>
+          p.length > 4 && p.startsWith("**") && p.endsWith("**")
+            ? <strong key={j}>{p.slice(2, -2)}</strong>
+            : p
+        );
+        return (
+          <div key={i} className={bullet ? "ia-li" : undefined}>
+            {partes}
+            {!linha && <br />}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function AssistenteIA({ ctxRef, aberto, setAberto, onOcupado }) {
+  const [cfg, setCfg]                   = useState(() => carregarCfgIA());
+  const [configurando, setConfigurando] = useState(() => !carregarCfgIA().url);
+  const [formCfg, setFormCfg]           = useState(() => carregarCfgIA());
+  const [msgs, setMsgs]                 = useState([]);
+  const [texto, setTexto]               = useState("");
+  const [ocupado, setOcupado]           = useState(false);
+  const [pendente, setPendente]         = useState(null);
+  const [aviso, setAviso]               = useState(null);
+  const [topo, setTopo]                 = useState(90);
+  const [dir, setDir]                   = useState(30);
+  const [caixaNav, setCaixaNav]         = useState({ dir: 18, larg: 0 });
+  const [sugestoes, setSugestoes]       = useState(() => sortearSugestoesIA());
+
+  const ilhaRef   = useRef(null);
+  const abertoRef = useRef(false);
+  abertoRef.current = aberto;
+
+  // avisa o botão da barra superior quando a IA está trabalhando
+  useEffect(() => { onOcupado?.(ocupado || !!pendente); }, [ocupado, pendente]);
+  const histRef   = useRef([]);
+  const abortRef  = useRef(null);
+  const corpoRef  = useRef(null);
+  const inputRef  = useRef(null);
+
+  useEffect(() => {
+    const el = corpoRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [msgs, ocupado, pendente, aberto, configurando]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const onKey = (e) => e.key === "Escape" && fechar();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  useEffect(() => {
+    if (aberto && !configurando && typeof window !== "undefined" && window.innerWidth > 640) {
+      const t = setTimeout(() => inputRef.current?.focus(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [aberto, configurando]);
+
+  // novas sugestões a cada vez que o chat é aberto
+  useEffect(() => { if (aberto) setSugestoes(sortearSugestoesIA()); }, [aberto]);
+
+  // aviso curto na ilha (como uma "atividade ao vivo"), some sozinho
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(null), 2800);
+    return () => clearTimeout(t);
+  }, [aviso]);
+
+  // a ilha fica logo abaixo da barra superior
+  useEffect(() => {
+    const medir = () => {
+      const nav = document.querySelector(".navbar");
+      if (!nav) return;
+      setTopo(Math.round(nav.getBoundingClientRect().bottom) + 10);
+      const alvo = document.querySelector("[data-ia-btn]") || nav;
+      setDir(Math.max(12, Math.round(window.innerWidth - alvo.getBoundingClientRect().right)));
+      const rn = nav.getBoundingClientRect();
+      const novo = { dir: Math.max(0, Math.round(window.innerWidth - rn.right)), larg: Math.round(rn.width) };
+      setCaixaNav(c => (c.dir === novo.dir && c.larg === novo.larg ? c : novo));
+    };
+    medir();
+    const id = setInterval(medir, 400);
+    window.addEventListener("resize", medir);
+    return () => { clearInterval(id); window.removeEventListener("resize", medir); };
+  }, []);
+
+  // tocar fora recolhe a ilha
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e) => {
+      if (e.target.closest?.("[data-ia-btn]")) return; // o botão da barra faz o próprio toggle
+      if (ilhaRef.current && !ilhaRef.current.contains(e.target)) setAberto(false);
+    };
+    document.addEventListener("pointerdown", fora);
+    return () => document.removeEventListener("pointerdown", fora);
+  }, [aberto]);
+
+  function fechar() {
+    setAberto(false);
+  }
+
+  function novaConversa() {
+    abortRef.current?.abort();
+    pendente?.resolve(false);
+    setPendente(null);
+    histRef.current = [];
+    setMsgs([]);
+    setSugestoes(sortearSugestoesIA());
+  }
+
+  function salvarConfig() {
+    const novo = { url: formCfg.url.trim(), token: formCfg.token.trim() };
+    if (!novo.url) return;
+    salvarCfgIA(novo);
+    setCfg(novo);
+    setConfigurando(false);
+  }
+
+  async function rodarFerramenta(nome, args) {
+    const c0 = ctxRef.current;
+    if (!c0) return { erro: "Os dados ainda não foram carregados." };
+
+    if (IA_ACOES_COM_CONFIRMACAO.has(nome)) {
+      const ok = await new Promise(resolve =>
+        setPendente({ texto: descreverAcaoIA(nome, args), resolve })
+      );
+      setPendente(null);
+      if (!ok) {
+        setMsgs(m => [...m, { role: "sys", texto: "Ação cancelada" }]);
+        return { ok: false, mensagem: "O usuário cancelou a ação. Nada foi alterado." };
+      }
+      const r = ctxRef.current.executar(nome, args);
+      if (!r.ok) setMsgs(m => [...m, { role: "sys", texto: `Não foi possível: ${r.erro}` }]);
+      else if (!abertoRef.current) setAviso({ texto: r.mensagem });
+      return r;
+    }
+
+    if (IA_ACOES_LIVRES.has(nome)) {
+      const r = c0.executar(nome, args);
+      if (r.ok && !abertoRef.current) setAviso({ texto: r.mensagem });
+      return r;
+    }
+
+    return executarLeituraIA(nome, args, c0);
+  }
+
+  async function enviar(textoUsuario) {
+    const pergunta = String(textoUsuario ?? "").trim();
+    if (!pergunta || ocupado || !cfg.url) return;
+
+    setTexto("");
+    setMsgs(m => [...m, { role: "user", texto: pergunta }]);
+    setOcupado(true);
+    const historicoAntes = histRef.current;
+    histRef.current = podarHistoricoIA([...historicoAntes, { role: "user", parts: [{ text: pergunta }] }]);
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    try {
+      for (let passo = 0; passo < IA_MAX_PASSOS; passo++) {
+        const sistema = IA_SISTEMA + (IA_ENVIAR_RESUMO ? montarResumoIA(ctxRef.current) : "");
+        const data = await chamarGemini(cfg, histRef.current, ctrl.signal, sistema);
+        const content = data?.candidates?.[0]?.content;
+
+        if (!content?.parts?.length) {
+          const motivo = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason;
+          setMsgs(m => [...m, { role: "ia", texto: `A IA não retornou resposta${motivo ? ` (${motivo})` : ""}. Tente reformular.` }]);
+          break;
+        }
+
+        histRef.current.push({ role: "model", parts: content.parts });
+
+        const chamadas = content.parts.filter(p => p.functionCall);
+        const resposta = content.parts.filter(p => p.text && !p.thought).map(p => p.text).join("").trim();
+
+        if (!chamadas.length) {
+          setMsgs(m => [...m, { role: "ia", texto: resposta || "Sem resposta." }]);
+          break;
+        }
+
+        const respostas = [];
+        for (const p of chamadas) {
+          const { name, args } = p.functionCall;
+          const resultado = await rodarFerramenta(name, args ?? {});
+          respostas.push({ functionResponse: { name, response: resultado } });
+        }
+        histRef.current.push({ role: "user", parts: respostas });
+
+        if (passo === IA_MAX_PASSOS - 1) {
+          setMsgs(m => [...m, { role: "ia", texto: "Precisei de passos demais para responder. Tente dividir o pedido em partes menores." }]);
+        }
+      }
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        setMsgs(m => [...m, { role: "erro", texto: mensagemErroIA(e) }]);
+        // volta o histórico ao estado anterior à pergunta, para não deixar uma chamada de ferramenta sem resposta
+        histRef.current = historicoAntes;
+      }
+    } finally {
+      setOcupado(false);
+      setPendente(null);
+      if (!abertoRef.current && !ctrl.signal.aborted) setAviso({ texto: "Resposta pronta" });
+    }
+  }
+
+  const bloqueado = ocupado || !!pendente;
+  const modo = aberto ? "aberto" : pendente ? "confirmar" : aviso ? "aviso" : ocupado ? "pensando" : "ocioso";
+  const compacto = modo === "aviso";
+
+  function abrirIlha() { if (!aberto) setAberto(true); }
+
+  return createPortal(
+    <div
+      ref={ilhaRef}
+      className={`ia-ilha ia-ilha-${modo}`}
+      style={{ "--ia-topo": `${topo}px`, "--ia-dir": `${dir}px`, "--ia-nav-dir": `${caixaNav.dir}px`, "--ia-nav-larg": caixaNav.larg ? `${caixaNav.larg}px` : "calc(100vw - 36px)" }}
+      role={aberto ? "dialog" : "button"}
+      aria-label={aberto ? "Assistente de IA" : "Abrir assistente de IA"}
+      tabIndex={compacto ? 0 : undefined}
+      onClick={compacto ? abrirIlha : undefined}
+      onKeyDown={compacto ? (e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirIlha(); } }) : undefined}
+    >
+      <div className="ia-ilha-mini" aria-hidden={aberto}>
+        <div className="ia-ilha-mini-in" key={modo}>
+          {modo === "aviso" && (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3fd0c4" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M5 12.5l4.5 4.5L19 7.5" />
+              </svg>
+              <span className="ia-ilha-aviso-txt">{aviso?.texto}</span>
+            </>
+          )}
+          {modo === "confirmar" && pendente && (
+            <div className="ia-ilha-conf">
+              <div className="ia-ilha-conf-titulo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#3fd0c4", flexShrink: 0 }}>
+                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" />
+                <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" />
+              </svg><span>Confirmar alteração?</span></div>
+              <div className="ia-ilha-conf-texto">{pendente.texto}</div>
+              <div className="ia-ilha-conf-acoes">
+                <button className="ia-ilha-btn ia-ilha-btn-ok" onClick={() => pendente.resolve(true)}>Confirmar</button>
+                <button className="ia-ilha-btn" onClick={() => pendente.resolve(false)}>Cancelar</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="ia-ilha-cheio">
+          <div className="ia-header">
+            <div className="ia-header-titulo">Assistente</div>
+            <div className="ia-header-acoes">
+              <button className="btn-tema ia-icone" onClick={novaConversa} aria-label="Nova conversa" title="Nova conversa">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
+                </svg>
+              </button>
+              <button
+                className={`btn-tema ia-icone${configurando ? " btn-tema-ativo" : ""}`}
+                onClick={() => { setFormCfg(cfg); setConfigurando(c => !c); }}
+                aria-label="Configurar assistente" title="Configurar"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+                </svg>
+              </button>
+              <button className="btn-tema ia-icone" onClick={fechar} aria-label="Fechar" title="Fechar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 6l12 12" /><path d="M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {configurando ? (
+            <div className="ia-corpo" ref={corpoRef}>
+              <div className="ia-config">
+                <p className="ia-config-texto">
+                  O assistente usa a Gemini através de um Worker seu na Cloudflare, que guarda a chave de API.
+                  Cole abaixo o endereço do Worker (passo a passo na pasta <strong>ia-worker</strong>).
+                </p>
+                <div className="form-grupo">
+                  <label className="campo-titulo">URL do Worker</label>
+                  <input
+                    className="form-input"
+                    placeholder="https://valueup-ia.seu-usuario.workers.dev"
+                    value={formCfg.url}
+                    onChange={e => setFormCfg({ ...formCfg, url: e.target.value })}
+                    autoCapitalize="off" autoCorrect="off" spellCheck={false}
+                  />
+                </div>
+                <div className="form-grupo">
+                  <label className="campo-titulo">Token de acesso (o mesmo APP_TOKEN do Worker)</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    placeholder="opcional, mas recomendado"
+                    value={formCfg.token}
+                    onChange={e => setFormCfg({ ...formCfg, token: e.target.value })}
+                    autoComplete="off"
+                  />
+                </div>
+                <button className="form-botao" onClick={salvarConfig}>Salvar</button>
+                {cfg.url && (
+                  <button className="form-botao form-botao-secundario" onClick={() => setConfigurando(false)}>Cancelar</button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="ia-corpo" ref={corpoRef}>
+              {msgs.length === 0 && (
+                <div className="ia-vazio">
+                  <p className="ia-vazio-titulo">Pergunte qualquer coisa sobre seu patrimônio</p>
+                  <p className="ia-vazio-sub">Também posso alterar metas, ativos, reserva e lançamentos — sempre com a sua confirmação.</p>
+                  <div className="ia-chips">
+                    {sugestoes.map(s => (
+                      <button key={s} className="ia-chip" onClick={() => enviar(s)} disabled={bloqueado}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {msgs.map((m, i) => (
+                <div key={i} className={`ia-msg ia-msg-${m.role}`}>
+                  {m.role === "ia" ? <TextoIA texto={m.texto} /> : m.texto}
+                </div>
+              ))}
+
+              {ocupado && !pendente && (
+                <div className="ia-msg ia-msg-ia ia-digitando" aria-label="Pensando">
+                  <span /><span /><span />
+                </div>
+              )}
+
+              {pendente && (
+                <div className="ia-confirmar">
+                  <div className="ia-confirmar-titulo">Confirmar alteração?</div>
+                  <div className="ia-confirmar-texto">{pendente.texto}</div>
+                  <div className="ia-confirmar-acoes">
+                    <button className="form-botao" onClick={() => pendente.resolve(true)}>Confirmar</button>
+                    <button className="form-botao form-botao-secundario" onClick={() => pendente.resolve(false)}>Cancelar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!configurando && (
+            <form
+              className="ia-rodape"
+              onSubmit={e => { e.preventDefault(); enviar(texto); }}
+            >
+              <div className="ia-caixa">
+              <textarea
+                ref={inputRef}
+                className="ia-input"
+                rows={1}
+                placeholder="Pergunte ou peça uma alteração..."
+                value={texto}
+                onChange={e => setTexto(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(texto); }
+                }}
+                disabled={bloqueado}
+              />
+              <button type="submit" className="ia-enviar" disabled={bloqueado || !texto.trim()} aria-label="Enviar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5" /><path d="M5 12l7-7 7 7" />
+                </svg>
+              </button>
+              </div>
+            </form>
+          )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function App() {
   const [dadosPlanilha, setDadosPlanilha] = useState(null);
   const [dadosLocais, setDadosLocais]     = useState(() => carregarDadosLocais());
@@ -3401,6 +4504,9 @@ export default function App() {
   const scrollRef = useRef(null);
   const financasRef = useRef(null);
   const nuvemOkRef = useRef(false);
+  const iaCtxRef = useRef(null);
+  const [iaAberto, setIaAberto]   = useState(false);
+  const [iaOcupado, setIaOcupado] = useState(false);
 
   const [ativoEditando, setAtivoEditando] = useState(null);
   const [formAtivo, setFormAtivo]         = useState({ ticker: "", nome: "", classe: "", quantidade: "", preco_medio: "", dolar_compra: "", porcentagem_meta: "", cotacao: "" });
@@ -3728,6 +4834,11 @@ export default function App() {
   const novoAtivoAberto = ativoEditando === NOVO_ATIVO_MARCADOR;
   const modalAtivoAberto = novoAtivoAberto || !!ativoAtual;
 
+  iaCtxRef.current = {
+    ativos, totais, alocacao, dadosLocais, lancamentos, metaDespesa, taxaDolar, pagina, tema,
+    executar: criarExecutorIA({ ctxRef: iaCtxRef, setDadosLocais, setLancamentos, setMetaDespesa, setTema, irParaPagina }),
+  };
+
   return (
     <>
       <Style />
@@ -3742,8 +4853,12 @@ export default function App() {
           pagina={pagina}
           onNavigate={irParaPagina}
           tema={tema}
+          iaAberto={iaAberto}
+          iaOcupado={iaOcupado}
+          onToggleIA={() => setIaAberto(o => !o)}
         />
         <BotaoTopoFlutuante scrolled={scrolled} onTop={scrollToTop} />
+        <AssistenteIA ctxRef={iaCtxRef} aberto={iaAberto} setAberto={setIaAberto} onOcupado={setIaOcupado} />
         <main className="main">
 
           {pagina === "patrimonio" && (
@@ -3763,13 +4878,7 @@ export default function App() {
               <div id="sec-brasil-exterior"><CardBrasilExterior alocacao={alocacao} totais={totais} /></div>
               <div id="sec-aporte"><CardAporte ativos={ativos} alocacao={alocacao} /></div>
               <div id="sec-heatmap">
-                <CardHeatmap
-                  ativos={ativos}
-                  onSelectTicker={(ticker) => {
-                    if (pagina !== "investimentos") irParaPagina("investimentos");
-                    setSearchCmd({ ticker, v: Date.now() });
-                  }}
-                />
+                <CardHeatmap ativos={ativos} />
               </div>
               {CLASSES_ATIVOS.map(c => (
                 <div id={`sec-${c.sufixo}`} key={c.classe}>
@@ -4130,10 +5239,6 @@ function Style() {
         padding: 10px var(--space-3);
         transition: border-color 0.15s, box-shadow 0.15s;
       }
-      .navbar-search-inline:focus-within {
-        border-color: #0a5550;
-        box-shadow: 0 0 0 2px rgba(10,85,80,0.15);
-      }
       .navbar-search-icon { display: flex; align-items: center; opacity: 0.5; flex-shrink: 0; color: var(--color-value); }
       .navbar-search-inline-input {
         background: transparent;
@@ -4156,11 +5261,13 @@ function Style() {
         width: min(320px, calc(100vw - 24px));
         max-width: calc(100vw - 24px);
 
-        background: var(--bg2);
-        border: 1px solid var(--border2);
+        background: var(--navbar-bg);
+        border: 1px solid var(--navbar-border);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
         border-radius: var(--radius-md);
         overflow: hidden;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
         z-index: 200;
       }
       .navbar-search-box-desktop {
@@ -4194,6 +5301,20 @@ function Style() {
         overflow-y: auto;
         border-top: none !important;
       }
+      @supports not selector(::-webkit-scrollbar) {
+        .navbar-search-results { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }
+        :root[data-theme="light"] .navbar-search-results { scrollbar-color: rgba(9, 30, 27, 0.22) transparent; }
+      }
+      .navbar-search-results::-webkit-scrollbar { width: 4px; }
+      .navbar-search-results::-webkit-scrollbar-track { background: transparent; }
+      .navbar-search-results::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+      }
+      .navbar-search-results::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
+      .navbar-search-results::-webkit-scrollbar-button,
+      .navbar-search-results::-webkit-scrollbar-button:single-button { display: none; width: 0; height: 0; }
+      :root[data-theme="light"] .navbar-search-results::-webkit-scrollbar-thumb { background: rgba(9, 30, 27, 0.22); }
       .navbar-search-results::before,
       .navbar-search-results::after {
         display: none !important;
@@ -4210,7 +5331,10 @@ function Style() {
         font-family: inherit;
         text-align: left;
       }
-      .navbar-search-item:hover { background: var(--bg3); }
+      .navbar-search-item:hover,
+      .navbar-search-item.is-ativo { background: rgba(255, 255, 255, 0.08); }
+      :root[data-theme="light"] .navbar-search-item:hover,
+      :root[data-theme="light"] .navbar-search-item.is-ativo { background: rgba(9, 30, 27, 0.07); }
       .btn-tema svg,
       .navbar-search-icon {
         color: var(--color-value);
@@ -4271,69 +5395,57 @@ function Style() {
 
             .navbar-hamburger-wrap { display: none; }
 
-            .navbar-menu-overlay {
+            .navbar-menu-backdrop {
         position: fixed;
         inset: 0;
+        z-index: 499;
+        background: transparent;
+      }
+      .navbar-menu-dropdown {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
         z-index: 500;
-        background: rgba(9, 10, 10, 0.7);
-        backdrop-filter: blur(28px);
-        -webkit-backdrop-filter: blur(28px);
-        display: flex;
-        flex-direction: column;
-        padding: var(--space-5) var(--space-5) var(--space-6);
+        width: calc(100% - 40px);
+        max-width: 1160px;
         box-sizing: border-box;
-        overflow-y: auto;
-        animation: navbarMenuFade 0.2s ease;
-      }
-      :root[data-theme="light"] .navbar-menu-overlay { background: rgba(244, 246, 245, 0.82); }
-      @keyframes navbarMenuFade {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-      }
-      .navbar-menu-overlay-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--space-3);
-        flex-shrink: 0;
-      }
-      .navbar-menu-overlay-list {
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        gap: var(--space-3);
-        flex: 1;
-        margin-top: 0;
-        margin-bottom: 45px;
+        gap: 2px;
+        padding: 8px;
+        border-radius: 26px;
+        background: var(--navbar-bg);
+        border: 1px solid var(--navbar-border);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+        transform-origin: top center;
+        animation: navbarMenuDrop 0.2s ease;
+      }
+      @keyframes navbarMenuDrop {
+        from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.98); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
       }
       .navbar-menu-overlay-item {
-        background: rgba(255, 255, 255, 0.045);
-        border: 1px solid var(--border2);
+        background: transparent;
+        border: none;
         color: var(--color-label);
         font-family: inherit;
-        font-size: 19px;
+        font-size: 15px;
         font-weight: 600;
         text-align: center;
-        padding: var(--space-4) var(--space-5);
-        border-radius: var(--radius-md);
+        padding: 13px var(--space-4);
+        border-radius: 14px;
         cursor: pointer;
-        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        transition: background 0.15s ease, color 0.15s ease;
       }
-      .navbar-menu-overlay-item:hover {
-        background: rgba(255, 255, 255, 0.08);
+      .navbar-menu-overlay-item:hover { color: var(--color-value); }
+      .navbar-menu-overlay-item.is-ativo {
+        background: rgba(19, 160, 151, 0.16);
         color: var(--color-value);
       }
-      :root[data-theme="light"] .navbar-menu-overlay-item { background: rgba(9, 30, 27, 0.035); }
-      :root[data-theme="light"] .navbar-menu-overlay-item:hover { background: rgba(9, 30, 27, 0.06); }
-      .navbar-menu-overlay-item.is-ativo {
-        background: var(--accent);
-        border-color: transparent;
-        color: #f5f5f7;
-      }
       :root[data-theme="light"] .navbar-menu-overlay-item.is-ativo {
-        background: var(--accent);
-        border-color: transparent;
-        color: #f5f5f7;
+        background: rgba(19, 160, 151, 0.14);
       }
 
       @media (max-width: 1024px) {
@@ -4342,6 +5454,7 @@ function Style() {
       @media (max-width: 640px) {
         .navbar-tabs { display: none; }
         .navbar-hamburger-wrap { display: block; }
+        .navbar-config-btn { display: none; }
       }
 
             .btn-topo-flutuante {
@@ -4838,7 +5951,7 @@ function Style() {
           margin: 0;
           box-sizing: border-box;
           z-index: 9999;
-          border-color: #0a5550;
+          border-color: var(--navbar-border);
         }
         .navbar-search-input {
           width: 100%;
@@ -4964,8 +6077,9 @@ function Style() {
       @media (max-width: 640px) {
         .modal-sheet.modal-ativo-detalhe {
           max-width: none;
-          height: 100%;
-          max-height: none;
+          height: auto;
+          max-height: 100%;
+          padding-bottom: var(--space-5);
         }
       }
       @keyframes modalSlideUp { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -5096,6 +6210,14 @@ function Style() {
       .form-botao:active { transform: scale(0.98); }
       .form-botao-perigo { background: transparent; border: 1px solid rgba(138,53,53,0.4); color: #c0504a; }
       .form-botao-perigo:hover { background: rgba(138,53,53,0.12); }
+      .confirmar-exclusao-acoes { display: flex; gap: var(--space-3); }
+      .confirmar-exclusao-acoes .form-botao { flex: 1; min-width: 0; }
+      .form-botao-perigo.form-botao-confirmar-exclusao,
+      .form-botao-perigo.form-botao-confirmar-exclusao:hover {
+        background: rgba(138,53,53,0.2);
+        border-color: #8a3535;
+        color: #f5f5f7;
+      }
       .form-botao-secundario { background: transparent; border: 1px solid var(--border2); color: var(--color-label); }
       .form-botao-secundario:hover { background: var(--bg3); color: var(--color-value); }
 
@@ -5329,6 +6451,7 @@ function Style() {
             @media (max-width: 1024px) {
         .main { padding: 106px 18px 52px; gap: 22px; }
         .navbar { width: calc(100% - 36px); max-width: none; }
+        .navbar-menu-dropdown { width: calc(100% - 36px); max-width: none; }
         .card { padding: var(--space-5) !important; gap: 14px; }
         .subcard { padding: 18px !important; gap: var(--space-3); }
         .list-row { --row-pad-x: 18px; }
@@ -5352,6 +6475,7 @@ function Style() {
           box-sizing: border-box;
           border-radius: 20px;
         }
+        .navbar-menu-dropdown { width: calc(100% - 24px); border-radius: 20px; }
         
         .navbar-logo-img { height: 30px; max-width: 100px; }
         .loading-logo-img { height: 66px; }
@@ -5440,7 +6564,6 @@ function Style() {
         .menu-lanc-item:not(.menu-lanc-item-perigo):hover,
         .dropdown-item:not(.is-ativo):hover,
         .config-tema-btn:not(.is-ativo):hover,
-        .navbar-menu-overlay-item:not(.is-ativo):hover,
         .form-botao-secundario:hover,
         .tipo-opcao:not(.tipo-opcao-ativa):hover {
           background: linear-gradient(135deg, rgba(19,160,151,0.12), rgba(19,160,151,0.03)), var(--bg3);
@@ -5470,8 +6593,334 @@ function Style() {
         }
         .menu-lanc-item-perigo:hover { background: rgba(138,53,53,0.12); }
       }
-      .list-row-clickable, .dropdown-item, .modal-fechar, .menu-lanc-item, .form-botao-secundario, .form-botao-perigo, .tipo-opcao, .navbar-menu-overlay-item, .config-tema-btn {
+      .list-row-clickable, .dropdown-item, .modal-fechar, .menu-lanc-item, .form-botao-secundario, .form-botao-perigo, .tipo-opcao, .config-tema-btn {
         transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.3s ease, transform 0.15s ease;
+      }
+
+      /* ===== Navbar (telas grandes): pílula das abas, busca e botões transparentes (o glass da barra aparece por trás) ===== */
+      @media (min-width: 641px) {
+        .navbar {
+          --navbar-ctrl-bg: rgba(255, 255, 255, 0.045);
+          --navbar-ctrl-border: rgba(255, 255, 255, 0.09);
+        }
+        :root[data-theme="light"] .navbar {
+          --navbar-ctrl-bg: rgba(255, 255, 255, 0.4);
+          --navbar-ctrl-border: rgba(9, 30, 27, 0.09);
+        }
+        .navbar .navbar-tabs,
+        .navbar .navbar-search-inline,
+        .navbar .navbar-right .btn-tema:not(.btn-tema-ativo) {
+          background: var(--navbar-ctrl-bg);
+          border: 1px solid var(--navbar-ctrl-border);
+          box-shadow: none;
+        }
+      }
+      @media (min-width: 641px) and (hover: hover) {
+        .navbar .navbar-right .btn-tema:not(.btn-tema-ativo):hover {
+          background: linear-gradient(135deg, rgba(19,160,151,0.14), rgba(19,160,151,0.04)), var(--navbar-ctrl-bg);
+          box-shadow: 0 0 22px rgba(19,160,151,0.18);
+        }
+      }
+
+      /* ===== Assistente IA ===== */
+      .ia-ilha {
+        --ia-mola: cubic-bezier(0.32, 1.22, 0.42, 1);
+        --ia-larg: min(420px, calc(100vw - var(--ia-dir, 30px) - 12px));
+        position: fixed;
+        top: var(--ia-topo, 90px);
+        right: var(--ia-dir, 30px);
+        transform-origin: top right;
+        z-index: 960;
+        box-sizing: border-box;
+        overflow: hidden;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        opacity: 0;
+        pointer-events: none;
+        background: #000;
+        color: #f5f5f7;
+        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 8px 28px rgba(0,0,0,0.4);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        transition:
+          width 0.55s var(--ia-mola),
+          height 0.55s var(--ia-mola),
+          border-radius 0.55s var(--ia-mola),
+          top 0.3s ease,
+          right 0.4s var(--ia-mola),
+          opacity 0.2s ease,
+          background-color 0.35s ease,
+          border-color 0.35s ease,
+          box-shadow 0.35s ease;
+      }
+      .ia-ilha:focus-visible { outline: 2px solid #3fd0c4; outline-offset: 2px; }
+      .ia-ilha-aviso, .ia-ilha-confirmar, .ia-ilha-aberto { opacity: 1; pointer-events: auto; }
+      .ia-ilha-aviso:active { transform: scale(0.97); }
+      .ia-ilha-aviso { width: min(340px, calc(100vw - var(--ia-dir, 30px) - 12px)); height: 44px; border-radius: 22px; }
+      .ia-ilha-confirmar { width: min(380px, calc(100vw - var(--ia-dir, 30px) - 12px)); height: 164px; border-radius: 30px; cursor: default; }
+      .ia-ilha-aberto {
+        width: var(--ia-larg);
+        height: min(640px, calc(100vh - var(--ia-topo, 90px) - 16px));
+        height: min(640px, calc(100dvh - var(--ia-topo, 90px) - 16px));
+        border-radius: var(--radius-card);
+        background: var(--navbar-bg);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        color: var(--color-value);
+        border-color: var(--navbar-border);
+        box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+        cursor: default;
+      }
+
+      .ia-ilha-mini {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.2s ease, visibility 0s linear 0s;
+      }
+      .ia-ilha-aberto .ia-ilha-mini { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.15s ease, visibility 0s linear 0.15s; }
+      .ia-ilha-mini-in {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        padding: 0 14px;
+        box-sizing: border-box;
+        animation: iaMiniIn 0.35s ease 0.12s both;
+      }
+      @keyframes iaMiniIn { from { opacity: 0; transform: scale(0.92); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+      .ia-ilha-aviso-txt { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      .ia-ilha-conf { display: flex; flex-direction: column; gap: 10px; align-items: stretch; text-align: left; width: 100%; height: auto; padding: 4px 6px; background: none; border-radius: 0; cursor: default; }
+      .ia-ilha-conf-titulo { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #3fd0c4; }
+      .ia-ilha-conf-texto { font-size: 14px; line-height: 1.4; color: #f5f5f7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+      .ia-ilha-conf-acoes { display: flex; gap: 8px; }
+      .ia-ilha-btn { flex: 1; min-width: 0; padding: 10px; font-size: 14px; font-weight: 600; font-family: inherit; border-radius: 999px; cursor: pointer; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color: #f5f5f7; transition: transform 0.15s ease, background 0.15s ease; }
+      .ia-ilha-btn:active { transform: scale(0.96); }
+      .ia-ilha-btn-ok { background: #0d6e68; border-color: #0d6e68; }
+
+      .navbar-ia-btn { position: relative; }
+      .navbar-ia-badge {
+        position: absolute; top: 4px; right: 4px;
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #3fd0c4;
+        animation: iaDot 1.2s ease-in-out infinite;
+      }
+
+      .ia-ilha-cheio {
+        position: absolute;
+        top: 0; left: 0;
+        width: var(--ia-larg);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.15s ease, visibility 0s linear 0.15s;
+      }
+      .ia-ilha-aberto .ia-ilha-cheio { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 0.3s ease 0.18s, visibility 0s; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .ia-ilha, .ia-ilha-mini, .ia-ilha-cheio { transition-duration: 0.01s !important; transition-delay: 0s !important; }
+        .ia-ilha-mini-in { animation: none; }
+      }
+
+      .ia-ilha-cheio { --brilho: 255, 255, 255; --ia-linha: rgba(255,255,255,0.07); }
+      :root[data-theme="light"] .ia-ilha-cheio { --brilho: 9, 30, 27; --ia-linha: rgba(9,30,27,0.08); }
+
+      .ia-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3);
+        padding: 12px 14px 12px 22px;
+        border-bottom: 1px solid var(--ia-linha);
+        flex-shrink: 0;
+      }
+      .ia-header-titulo { font-size: 14px; font-weight: 600; letter-spacing: 0.01em; color: var(--color-title); }
+      .ia-header-acoes { display: flex; align-items: center; gap: 8px; }
+      /* botões do cabeçalho usam o estilo .btn-tema, igual aos outros botões do programa */
+      .ia-icone { color: var(--color-label); }
+      .ia-icone:hover { color: var(--color-value); }
+      .ia-icone.btn-tema-ativo, .ia-icone.btn-tema-ativo:hover { color: #f5f5f7; }
+
+      .ia-corpo {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 20px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        scrollbar-width: none;
+      }
+      .ia-corpo::-webkit-scrollbar { display: none; }
+
+      .ia-msg {
+        font-size: 14px;
+        line-height: 1.6;
+        word-break: break-word;
+      }
+      .ia-msg-user {
+        align-self: flex-end;
+        max-width: 85%;
+        padding: 9px 14px;
+        background: rgba(var(--brilho), 0.08);
+        color: var(--color-title);
+        border-radius: 16px 16px 4px 16px;
+      }
+      .ia-msg-ia {
+        align-self: stretch;
+        padding: 0;
+        color: var(--color-value);
+      }
+      .ia-msg-sys {
+        align-self: flex-start;
+        font-size: 12px;
+        color: var(--color-label);
+      }
+      .ia-msg-erro {
+        align-self: stretch;
+        padding: 10px 14px;
+        background: rgba(217,119,111,0.1);
+        color: #d9776f;
+        border-radius: 12px;
+        font-size: 13px;
+      }
+      .ia-li { position: relative; padding-left: 14px; }
+      .ia-li::before { content: "•"; position: absolute; left: 2px; opacity: 0.7; }
+
+      .ia-digitando { display: flex; align-items: center; gap: 5px; padding: 6px 0; }
+      .ia-digitando span {
+        width: 5px; height: 5px;
+        border-radius: 50%;
+        background: var(--color-label);
+        animation: iaDot 1.2s ease-in-out infinite;
+      }
+      .ia-digitando span:nth-child(2) { animation-delay: 0.15s; }
+      .ia-digitando span:nth-child(3) { animation-delay: 0.3s; }
+      @keyframes iaDot { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+      .ia-vazio { margin: auto 0; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+      .ia-vazio-titulo { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--color-title); }
+      .ia-vazio-sub { font-size: 13px; color: var(--color-label); line-height: 1.55; max-width: 320px; }
+      .ia-chips { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 20px; }
+      .ia-chip {
+        background: var(--bg3);
+        border: 1px solid var(--border2);
+        color: var(--color-value);
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        text-align: left;
+        line-height: 1.3;
+        padding: 9px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+      }
+      .ia-chip:active:not(:disabled) { transform: scale(0.97); }
+      .ia-chip:disabled { opacity: 0.5; cursor: default; }
+      @media (hover: hover) {
+        .ia-chip:not(:disabled):hover { background: var(--bg4); box-shadow: 0 4px 16px rgba(10,85,80,0.25); }
+      }
+
+      .ia-confirmar {
+        align-self: stretch;
+        background: rgba(var(--brilho), 0.05);
+        border: 1px solid var(--ia-linha);
+        border-radius: 14px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .ia-confirmar-titulo { font-size: 13px; font-weight: 600; color: var(--color-title); }
+      .ia-confirmar-texto { font-size: 14px; color: var(--color-value); line-height: 1.5; }
+      .ia-confirmar-acoes { display: flex; gap: 8px; }
+      .ia-confirmar-acoes .form-botao { flex: 1; min-width: 0; padding: 9px 12px; font-size: 13px; border-radius: 999px; }
+
+      .ia-config { display: flex; flex-direction: column; gap: var(--space-4); }
+      .ia-config-texto { font-size: 13px; line-height: 1.5; color: var(--color-label); }
+      .ia-config-texto strong { color: var(--color-value); }
+
+      .ia-rodape {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        padding: 12px 16px 16px;
+        flex-shrink: 0;
+      }
+      .ia-caixa {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        padding: 5px 5px 5px 18px;
+        background: rgba(var(--brilho), 0.05);
+        border: 1px solid var(--ia-linha);
+        border-radius: 26px;
+      }
+      .ia-input {
+        flex: 1;
+        min-width: 0;
+        resize: none;
+        max-height: 120px;
+        padding: 9px 0;
+        background: transparent;
+        border: none;
+        outline: none;
+        box-shadow: none;
+        color: var(--color-value);
+        font-family: inherit;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      .ia-input::placeholder { color: var(--color-label); }
+
+      /* caixas de texto: sem borda verde, só um brilho suave ao passar o mouse e ao clicar */
+      .navbar .navbar-search-inline { --brilho: 255, 255, 255; }
+      :root[data-theme="light"] .navbar .navbar-search-inline { --brilho: 9, 30, 27; }
+      .ia-caixa:hover,
+      .navbar .navbar-search-inline:hover {
+        box-shadow: 0 0 14px rgba(var(--brilho), 0.07);
+      }
+      .ia-caixa:focus-within,
+      .navbar .navbar-search-inline:focus-within {
+        box-shadow: 0 0 18px rgba(var(--brilho), 0.12);
+      }
+      .ia-caixa, .navbar .navbar-search-inline { transition: box-shadow 0.2s ease; }
+      .ia-enviar {
+        width: 38px; height: 38px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #f5f5f7;
+        border: none;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.2s ease, opacity 0.2s ease, transform 0.15s ease;
+      }
+      .ia-enviar:hover:not(:disabled) { background: var(--accent-h); }
+      .ia-enviar:active:not(:disabled) { transform: scale(0.94); }
+      .ia-enviar:disabled { opacity: 0.25; cursor: default; }
+
+      @media (max-width: 640px) {
+        /* telas pequenas: o chat ocupa a mesma largura da barra superior e dos cards */
+        .ia-ilha-aviso, .ia-ilha-confirmar, .ia-ilha-aberto {
+          right: var(--ia-nav-dir, 18px);
+          --ia-larg: var(--ia-nav-larg);
+          width: var(--ia-larg);
+        }
+        .ia-corpo { padding-left: 18px; padding-right: 18px; }
+        .ia-header { padding-left: 18px; }
       }
     `}</style>
   );
